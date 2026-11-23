@@ -1,20 +1,15 @@
 import React from 'react';
-import {
-  CheckCircle,
-  FileText,
-  Clock,
-  AlertCircle,
-  Eye,
-  Trash2,
-} from 'lucide-react';
+import { CheckCircle, FileText, Clock, AlertCircle, Eye, Trash2, ExternalLink } from 'lucide-react';
 import type { Application } from '../../types';
 import { useConfirm } from './ConfirmDialog';
+import { getJobUrl } from '../utils/job-tabs';
 
 export const StatusBadge = ({ status }: { status: string }) => {
   const statusConfig: Record<string, { class: string; label: string }> = {
     submitted: { class: 'badge-success', label: 'Submitted' },
     filled: { class: 'badge-info', label: 'Filled' },
     pending: { class: 'badge-warning', label: 'Pending' },
+    review_required: { class: 'badge-warning', label: 'Review' },
     failed: { class: 'badge-error', label: 'Failed' },
   };
   const config = statusConfig[status] || statusConfig.pending;
@@ -54,10 +49,11 @@ export const ApplicationCard = ({
   onPreview,
 }: {
   application: Application;
-  onDelete: () => void;
+  onDelete?: () => void;
   onPreview?: () => void;
 }) => {
   const confirm = useConfirm();
+  const jobUrl = getJobUrl(application.url);
 
   const statusIcon = {
     submitted: <CheckCircle className="w-4 h-4 text-emerald-400" />,
@@ -75,27 +71,49 @@ export const ApplicationCard = ({
       confirmLabel: 'Delete',
       variant: 'destructive',
     });
-    if (confirmed) onDelete();
+    if (confirmed) onDelete?.();
   };
 
   return (
-    <div className="card card-interactive p-4 flex items-center gap-4 group">
+    <div className="card card-interactive p-3 flex items-center gap-2 group">
       <div className="w-10 h-10 rounded-lg bg-(--bg-tertiary) flex items-center justify-center text-(--text-tertiary) group-hover:bg-blue-500/10 group-hover:text-blue-400 transition-colors">
         {statusIcon[application.status as keyof typeof statusIcon] || statusIcon.pending}
       </div>
 
       <div className="flex-1 min-w-0">
-        <h4 className="text-sm font-semibold text-(--text-primary) truncate">
-          {application.company || 'Unknown Company'}
-        </h4>
-        <p className="text-xs text-(--text-tertiary) truncate">
-          {application.job_title || 'Untitled position'}
-        </p>
+        {jobUrl ? (
+          <a
+            href={jobUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block rounded hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-blue-400"
+            aria-label={`Open ${application.job_title || 'job'} at ${application.company || 'company'} in a new tab`}
+            title="Open job in a new tab"
+          >
+            <h4 className="text-sm font-semibold truncate">
+              {application.company || 'Unknown Company'}
+              <ExternalLink className="inline w-3 h-3 ml-1.5" aria-hidden="true" />
+            </h4>
+            <p className="text-xs text-(--text-secondary) truncate">
+              {application.job_title || 'Untitled position'}
+            </p>
+          </a>
+        ) : (
+          <>
+            <h4 className="text-sm font-semibold text-(--text-primary) truncate">
+              {application.company || 'Unknown Company'}
+            </h4>
+            <p className="text-xs text-(--text-tertiary) truncate">
+              {application.job_title || 'Untitled position'}
+            </p>
+            <p className="text-xs text-amber-400">Job link unavailable</p>
+          </>
+        )}
       </div>
 
       <StatusBadge status={application.status} />
 
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center gap-1">
         {(application.generated_resume || application.generated_cover_letter) && (
           <button
             onClick={onPreview}
@@ -106,13 +124,15 @@ export const ApplicationCard = ({
             <Eye className="w-4 h-4" />
           </button>
         )}
-        <button
-          onClick={handleDelete}
-          className="p-2 rounded-lg hover:bg-rose-500/10 text-(--text-tertiary) hover:text-rose-400 transition-colors"
-          aria-label="Delete application"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+        {onDelete && (
+          <button
+            onClick={handleDelete}
+            className="p-2 rounded-lg hover:bg-rose-500/10 text-(--text-tertiary) hover:text-rose-400 transition-colors"
+            aria-label="Delete application"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
   );

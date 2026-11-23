@@ -44,6 +44,7 @@ import { GenerateDocumentsCard } from './components/GenerateDocumentsCard';
 import { ImportPreviewModal } from './components/ImportPreviewModal';
 import { VirtualList } from './components/VirtualList';
 import { HomeInsightsSection } from './components/HomeInsightsSection';
+import { ReviewJobsSection } from './components/ReviewJobsSection';
 import { ChatSection } from './components/ChatSection';
 
 // Constants
@@ -696,6 +697,8 @@ const AppContent = () => {
             />
 
             <QuickStats timeSaved={timeSaved} applicationsCount={applications.length} />
+
+            <ReviewJobsSection applications={applications} onPreview={setPreviewApp} />
 
             <HomeInsightsSection
               currentTabUrl={currentTabUrl}
