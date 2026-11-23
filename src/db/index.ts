@@ -184,6 +184,15 @@ function runMigrations(database: Database): void {
     },
   ];
 
+  migrations.push({
+    name: '008_add_application_source_resume',
+    run: (currentDatabase) => {
+      if (!hasColumn('applications', 'source_resume')) {
+        currentDatabase.exec('ALTER TABLE applications ADD COLUMN source_resume TEXT');
+      }
+    },
+  });
+
   const appliedMigrations = database
     .query<{ name: string }, []>('SELECT name FROM migrations')
     .all()

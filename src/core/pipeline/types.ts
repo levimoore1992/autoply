@@ -24,6 +24,7 @@ export interface PassiveProcessResult extends ApplicationResult {
 
 // ── Document generation result ────────────────────────────────────────────────
 export interface GeneratedDocumentPaths {
+  sourceResume?: string;
   resumePath?: string;
   coverLetterPath?: string;
   resumeContent?: string;

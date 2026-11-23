@@ -44,10 +44,13 @@ import { GenerateDocumentsCard } from './components/GenerateDocumentsCard';
 import { ImportPreviewModal } from './components/ImportPreviewModal';
 import { VirtualList } from './components/VirtualList';
 import { HomeInsightsSection } from './components/HomeInsightsSection';
+import { ReviewJobsSection } from './components/ReviewJobsSection';
 import { ChatSection } from './components/ChatSection';
 
 // Constants
 import { NON_SCRIPTABLE_PROTOCOLS, UNSUPPORTED_HOSTNAMES } from './constants';
+import { getApplicationPreviewDocs } from './utils/document-previews';
+import { documentJobKey } from './utils/job-tabs';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -471,7 +474,9 @@ const AppContent = () => {
       }
 
       // Kick off resume download in parallel with form field detection
-      const generatedDocs = generateDocsMutation.data;
+      const latestDocs = generateDocsMutation.data;
+      const generatedDocs = latestDocs && tab.url && documentJobKey(latestDocs.jobUrl) === documentJobKey(tab.url) ? latestDocs : null;
+      if (latestDocs?.resume && !generatedDocs) toast.warning('The generated resume belongs to a different job. Generate a resume for this job before attaching it.');
       const resumePromise: Promise<{ base64: string; filename: string } | null> =
         generatedDocs?.resume
           ? downloadDocumentMutation
@@ -493,9 +498,11 @@ const AppContent = () => {
 
       // Detect form fields (runs in parallel with resume download above)
       let fillPlan: Record<string, string> = {};
+      let formFields: import('../ai/application-answers').DetectedApplicationField[] = [];
       try {
         const detectedFields = await sendMessageToTab(tab.id, { type: 'GET_FORM_FIELDS' }, tab.url);
         if (detectedFields?.fields?.length > 0) {
+          formFields = detectedFields.fields;
           // Build fillPlan locally — no server round-trip needed for standard fields
           fillPlan = buildFillPlanLocally(detectedFields.fields, profile);
 
@@ -505,7 +512,7 @@ const AppContent = () => {
           );
           if (unmapped.length > 0) {
             try {
-              const result = await mapFieldsMutation.mutateAsync({ fields: unmapped });
+              const result = await mapFieldsMutation.mutateAsync({ fields: unmapped, url: tab.url });
               Object.assign(fillPlan, result.fillPlan || {});
             } catch {
               // server mapping is best-effort
@@ -539,6 +546,7 @@ const AppContent = () => {
 
       // Send to main frame first
       const fillResult = await sendMessageToTab(tab.id, profilePayload, tab.url);
+      if (fillResult?.errors?.length) toast.warning(fillResult.errors.join(' '));
       let filledArr: string[] = fillResult?.filled || [];
 
       // For Ashby and other iframe-based platforms, also try all frames
@@ -565,8 +573,8 @@ const AppContent = () => {
       if (filledArr.length > 0 || fillResult?.success) {
         const profileKeyToValue = buildProfileKeyToValue(profile);
         setFillReport({
-          filled: filledArr.map((key) => ({ key, value: profileKeyToValue[key] ?? '' })),
-          skipped: filledArr.length === 0 ? 0 : Math.max(0, 8 - filledArr.length),
+          filled: filledArr.map((key) => ({ key, label: formFields.find((field) => field.key === key)?.label, value: fillPlan[key] ?? profileKeyToValue[key] ?? '' })),
+          skipped: Math.max(0, formFields.length - filledArr.length),
         });
         toast.success(
           `${filledArr.length} field${filledArr.length !== 1 ? 's' : ''} filled successfully`
@@ -661,6 +669,7 @@ const AppContent = () => {
                     docs.push({
                       title: `Resume — ${currentTabUrl ? new URL(currentTabUrl).hostname.replace('www.', '') : ''}`,
                       content: data.resumeContent,
+                      originalContent: data.sourceResume,
                       filename: data.resume,
                       type: 'resume',
                     });
@@ -681,6 +690,7 @@ const AppContent = () => {
                   setPreviewDoc({
                     title: `Resume — ${currentTabUrl ? new URL(currentTabUrl).hostname.replace('www.', '') : ''}`,
                     content: data.resumeContent,
+                    originalContent: data.sourceResume,
                     filename: data.resume,
                     type: 'resume',
                   });
@@ -696,6 +706,8 @@ const AppContent = () => {
             />
 
             <QuickStats timeSaved={timeSaved} applicationsCount={applications.length} />
+
+            <ReviewJobsSection applications={applications} onPreview={setPreviewApp} />
 
             <HomeInsightsSection
               currentTabUrl={currentTabUrl}
@@ -840,32 +852,10 @@ const AppContent = () => {
 
       {/* Preview modals */}
       {previewApp && (previewApp.generated_resume || previewApp.generated_cover_letter) && (
-        <>
-          {previewApp.generated_resume && (
-            <PreviewModal
-              docs={[
-                {
-                  title: `Resume — ${previewApp.company || 'Application'}`,
-                  content: previewApp.generated_resume,
-                  type: 'resume',
-                },
-              ]}
-              onClose={() => setPreviewApp(null)}
-            />
-          )}
-          {!previewApp.generated_resume && previewApp.generated_cover_letter && (
-            <PreviewModal
-              docs={[
-                {
-                  title: `Cover Letter — ${previewApp.company || 'Application'}`,
-                  content: previewApp.generated_cover_letter,
-                  type: 'cover-letter',
-                },
-              ]}
-              onClose={() => setPreviewApp(null)}
-            />
-          )}
-        </>
+        <PreviewModal
+          docs={getApplicationPreviewDocs(previewApp, profile)}
+          onClose={() => setPreviewApp(null)}
+        />
       )}
       {previewDocs && previewDocs.length > 0 && (
         <PreviewModal docs={previewDocs} onClose={() => setPreviewDocs(null)} />

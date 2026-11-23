@@ -3,8 +3,25 @@ import { applicationRepository } from '../../db/repositories/application';
 import { profileRepository } from '../../db/repositories/profile';
 import { applicationOrchestrator } from '../../core/application';
 import type { ApplicationStatus } from '../../types';
+import { z } from 'zod';
+import { recordConfirmedSubmission } from '../../core/submissions';
 
 export function registerApplicationRoutes(app: FastifyInstance): void {
+  app.post('/applications/confirm-submission', async (request, reply) => {
+    const parsed = z
+      .object({ url: z.string().url(), confirmation: z.string().min(1).max(1000) })
+      .safeParse(request.body);
+    if (!parsed.success)
+      return reply.status(400).send({ error: 'Job URL and confirmation text are required' });
+    try {
+      const application = recordConfirmedSubmission(parsed.data.url, parsed.data.confirmation);
+      if (!application)
+        return reply.status(404).send({ error: 'No tracked application for this job' });
+      return { success: true, application };
+    } catch (error) {
+      return reply.status(400).send({ error: (error as Error).message });
+    }
+  });
   interface ApplicationQueryParams {
     status?: ApplicationStatus;
     company?: string;

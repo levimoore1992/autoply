@@ -3,7 +3,6 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
-  RefreshCcw,
   Edit3,
   X,
   ArrowRight,
@@ -29,7 +28,7 @@ export const FillReportCard = ({
   onDismiss,
   onRefill,
 }: {
-  report: { filled: Array<{ key: string; value: string }>; skipped: number };
+  report: { filled: Array<{ key: string; value: string; label?: string }>; skipped: number };
   onDismiss: () => void;
   onRefill: (fieldKey: string, value: string) => Promise<boolean>;
 }) => {
@@ -91,7 +90,7 @@ export const FillReportCard = ({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {report.filled.map(({ key, value }) => {
+        {report.filled.map(({ key, value, label }) => {
           const isEditing = editingKey === key;
           const isResume = key === 'resume_upload';
           return (
@@ -108,7 +107,7 @@ export const FillReportCard = ({
               }`}
             >
               {isResume && <CheckCircle className="w-2.5 h-2.5" />}
-              <span className="font-medium">{FILL_DISPLAY_NAMES[key] || key}</span>
+              <span className="font-medium">{FILL_DISPLAY_NAMES[key] || label || key}</span>
               {!isResume && <Edit3 className="w-2.5 h-2.5 opacity-40" />}
             </button>
           );

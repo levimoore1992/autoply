@@ -294,7 +294,7 @@ export function checkDocGenRateLimit(ip: string): boolean {
   return true;
 }
 
-// Cleanup old entries periodically
+// Clean up old entries without keeping completed CLI commands running.
 setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of docGenRateLimit.entries()) {
@@ -302,4 +302,4 @@ setInterval(() => {
       docGenRateLimit.delete(ip);
     }
   }
-}, 60000);
+}, 60000).unref();

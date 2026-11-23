@@ -16,6 +16,8 @@ interface GenerateDocumentsData {
 }
 
 export interface GeneratedDocumentsResult {
+  jobUrl: string;
+  sourceResume?: string;
   /** PDF filename for download/preview */
   resume?: string;
   /** PDF filename for download/preview */
@@ -40,7 +42,8 @@ interface BulkProcessData {
 }
 
 interface MapFieldsData {
-  fields: Array<{ key: string; type: string; label: string }>;
+  fields: import('../../ai/application-answers').DetectedApplicationField[];
+  url?: string;
 }
 
 // ── Mutations ────────────────────────────────────────────────────────────────
@@ -143,6 +146,7 @@ export function useGenerateDocuments() {
         resumePath?: string;
         coverLetterPath?: string;
         resumeContent?: string;
+        sourceResume?: string;
         coverLetterContent?: string;
         error?: string;
       }>('/documents/generate', {
@@ -154,9 +158,11 @@ export function useGenerateDocuments() {
       if (!data.success) throw new Error(data.error || 'Failed to generate documents');
 
       return {
+        jobUrl: url,
         resume: data.resumePath?.split('/').pop(),
         coverLetter: data.coverLetterPath?.split('/').pop(),
         resumeContent: data.resumeContent,
+        sourceResume: data.sourceResume,
         coverLetterContent: data.coverLetterContent,
       };
     },
@@ -214,11 +220,12 @@ export function useMapFields() {
   return useMutation({
     mutationFn: async ({
       fields,
+      url,
     }: MapFieldsData): Promise<{ fillPlan: Record<string, string> }> => {
       return apiFetchJson('/profile/map-fields', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields }),
+        body: JSON.stringify({ fields, url }),
       });
     },
   });

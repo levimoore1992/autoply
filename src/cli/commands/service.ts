@@ -24,7 +24,8 @@ function installMacos(): void {
   }
 
   const execPath = process.execPath; // bun executable
-  const scriptDir = join(import.meta.dir, '..', '..');
+  const projectDir = join(import.meta.dir, '..', '..', '..');
+  const apiScript = join(projectDir, 'src', 'api', 'server.ts');
   const logPath = join(homedir(), '.autoply', 'api.log');
 
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
@@ -36,11 +37,10 @@ function installMacos(): void {
   <key>ProgramArguments</key>
   <array>
     <string>${execPath}</string>
-    <string>run</string>
-    <string>api</string>
+    <string>${apiScript}</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>${scriptDir}</string>
+  <string>${projectDir}</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -115,7 +115,8 @@ function installLinux(): void {
   mkdirSync(unitDir, { recursive: true });
 
   const execPath = process.execPath;
-  const scriptDir = join(import.meta.dir, '..', '..');
+  const projectDir = join(import.meta.dir, '..', '..', '..');
+  const apiScript = join(projectDir, 'src', 'api', 'server.ts');
 
   const unit = `[Unit]
 Description=Autoply API Server
@@ -123,8 +124,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${execPath} run api
-WorkingDirectory=${scriptDir}
+ExecStart="${execPath}" "${apiScript}"
+WorkingDirectory=${projectDir}
 Restart=on-failure
 StandardOutput=append:${join(homedir(), '.autoply', 'api.log')}
 StandardError=append:${join(homedir(), '.autoply', 'api.log')}

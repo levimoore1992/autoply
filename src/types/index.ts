@@ -77,6 +77,8 @@ export interface Application {
   job_title: string;
   status: ApplicationStatus;
   generated_resume?: string;
+  /** Base resume captured when the tailored resume was generated. */
+  source_resume?: string;
   generated_cover_letter?: string;
   form_data?: Record<string, unknown>;
   error_message?: string;

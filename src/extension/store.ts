@@ -5,6 +5,8 @@ import type { Application, Profile } from '../types';
 export interface DocPreviewState {
   title: string;
   content: string;
+  originalContent?: string;
+  comparisonLabel?: string;
   filename?: string;
   type: 'resume' | 'cover-letter';
 }
@@ -19,7 +21,7 @@ type ActiveTab =
   | 'discovery';
 
 export interface FillReport {
-  filled: Array<{ key: string; value: string }>;
+  filled: Array<{ key: string; value: string; label?: string }>;
   skipped: number;
 }
 

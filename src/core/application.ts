@@ -41,6 +41,7 @@ import type {
 
 import { parseJobUrl } from '../utils/url-parser';
 import { scrapeJob } from '../scrapers';
+import { loadAshbyPosting } from '../scrapers/ashby-posting-api';
 import { createAIProvider } from '../ai/provider';
 import { join } from 'path';
 import { mkdir } from 'fs/promises';
@@ -154,6 +155,7 @@ export class ApplicationOrchestrator {
         job_title: jobData.title,
         status: 'pending',
         generated_resume: documents.resume,
+        source_resume: profile.base_resume,
         generated_cover_letter: documents.coverLetter,
       });
 
@@ -172,6 +174,7 @@ export class ApplicationOrchestrator {
       job_title: jobData.title,
       status: 'review_required', // Default to review required for safety
       generated_resume: documents.resume,
+      source_resume: profile.base_resume,
       generated_cover_letter: documents.coverLetter,
       form_data: {
         fields: jobData.form_fields,
@@ -240,7 +243,9 @@ export class ApplicationOrchestrator {
 
     let jobData: JobData;
     try {
-      jobData = await scrapeJob(url, parsedUrl.platform);
+      jobData = parsedUrl.platform === 'ashby'
+        ? await loadAshbyPosting(url)
+        : await scrapeJob(url, parsedUrl.platform);
       spinner.succeed(`Scraped: ${jobData.title} at ${jobData.company}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -250,7 +255,7 @@ export class ApplicationOrchestrator {
       );
     }
 
-    const result: GeneratedDocumentPaths = {};
+    const result: GeneratedDocumentPaths = { sourceResume: profile.base_resume };
 
     if (type === 'resume' || type === 'both') {
       spinner.start('Generating tailored resume...');
@@ -396,6 +401,7 @@ export class ApplicationOrchestrator {
         job_title: jobData.title,
         status: 'pending',
         generated_resume: resumeMd,
+        source_resume: profile.base_resume,
         generated_cover_letter: coverLetterMd,
         form_data: {
           fields: jobData.form_fields,

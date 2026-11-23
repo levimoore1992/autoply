@@ -11,6 +11,7 @@ export interface ApplicationRow {
   job_title: string;
   status: string;
   generated_resume: string | null;
+  source_resume: string | null;
   generated_cover_letter: string | null;
   form_data: string | null;
   error_message: string | null;
@@ -29,6 +30,7 @@ function rowToApplication(row: ApplicationRow): Application {
     job_title: row.job_title,
     status: row.status as ApplicationStatus,
     generated_resume: row.generated_resume ?? undefined,
+    source_resume: row.source_resume ?? undefined,
     generated_cover_letter: row.generated_cover_letter ?? undefined,
     form_data: row.form_data
       ? (() => {
@@ -52,8 +54,8 @@ export class ApplicationRepository {
     const stmt = db.prepare(`
       INSERT INTO applications (
         profile_id, url, platform, company, job_title, status,
-        generated_resume, generated_cover_letter, form_data, error_message, time_saved, applied_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        generated_resume, generated_cover_letter, form_data, error_message, time_saved, applied_at, source_resume
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -68,7 +70,8 @@ export class ApplicationRepository {
       application.form_data ? JSON.stringify(application.form_data) : null,
       application.error_message ?? null,
       application.time_saved ?? 0,
-      application.applied_at ?? null
+      application.applied_at ?? null,
+      application.source_resume ?? null
     );
 
     const created = this.findById(Number(result.lastInsertRowid));
@@ -153,6 +156,10 @@ export class ApplicationRepository {
     if (updates.generated_resume !== undefined) {
       fields.push('generated_resume = ?');
       values.push(updates.generated_resume);
+    }
+    if (updates.source_resume !== undefined) {
+      fields.push('source_resume = ?');
+      values.push(updates.source_resume);
     }
     if (updates.generated_cover_letter !== undefined) {
       fields.push('generated_cover_letter = ?');

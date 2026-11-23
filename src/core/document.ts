@@ -141,20 +141,14 @@ export async function markdownToPdf(
 
   /** Extract plain text from a token, handling inline formatting. */
   function extractText(tok: Token | Tokens.ListItem): string {
-    if ('text' in tok && typeof tok.text === 'string') return tok.text;
-    if ('tokens' in tok && tok.tokens) {
+    if ('tokens' in tok && tok.tokens?.length) {
       return tok.tokens
-        .map((t: Token) => {
-          if ('text' in t) return (t as { text?: string }).text ?? '';
-          if (t.type === 'link') return (t as Tokens.Link).text ?? '';
-          if (t.type === 'image') return (t as Tokens.Image).text ?? '';
-          if (t.type === 'strong') return (t as Tokens.Strong).text ?? '';
-          if (t.type === 'em') return (t as Tokens.Em).text ?? '';
-          if (t.type === 'codespan') return (t as Tokens.Codespan).text ?? '';
-          return '';
-        })
+        .filter((token) => token.type !== 'list')
+        .map((token) => extractText(token))
         .join('');
     }
+    if (tok.type === 'br') return '\n';
+    if ('text' in tok && typeof tok.text === 'string') return tok.text;
     return '';
   }
 
@@ -206,7 +200,7 @@ export async function markdownToPdf(
         const h = token as Tokens.Heading;
         ensureSpace(2);
         const headingSize = opts.fontSize + 4 - (h.depth - 1) * 1.5;
-        drawBlock(h.text, 0, true, Math.max(headingSize, opts.fontSize));
+        drawBlock(extractText(h), 0, true, Math.max(headingSize, opts.fontSize));
         cursorY -= lineHeight / 2;
         break;
       }
@@ -216,7 +210,16 @@ export async function markdownToPdf(
         ensureSpace();
         const txt = extractText(p);
         if (txt.trim()) {
-          drawBlock(txt);
+          const meaningfulTokens = p.tokens?.filter(
+            (part) => part.type !== 'br' && !(part.type === 'text' && !part.text.trim())
+          );
+          drawBlock(
+            txt,
+            0,
+            Boolean(
+              meaningfulTokens?.length && meaningfulTokens.every((part) => part.type === 'strong')
+            )
+          );
         }
         break;
       }
