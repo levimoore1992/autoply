@@ -18,5 +18,5 @@ Each feature is committed separately. Existing local engine/setup changes are ou
 ## Application flow follow-up
 
 - [x] Generate Ashby resumes through its public posting API, without requiring another installed browser.
-- [ ] Draft custom application answers and fill supported choice controls through Autoply.
+- [x] Draft custom application answers and fill supported choice controls through Autoply.
 - [ ] Run the complete app-driven form fill, attach its unchanged resume, and open Changes for review without submitting.

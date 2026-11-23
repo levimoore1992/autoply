@@ -495,9 +495,11 @@ const AppContent = () => {
 
       // Detect form fields (runs in parallel with resume download above)
       let fillPlan: Record<string, string> = {};
+      let formFields: import('../ai/application-answers').DetectedApplicationField[] = [];
       try {
         const detectedFields = await sendMessageToTab(tab.id, { type: 'GET_FORM_FIELDS' }, tab.url);
         if (detectedFields?.fields?.length > 0) {
+          formFields = detectedFields.fields;
           // Build fillPlan locally — no server round-trip needed for standard fields
           fillPlan = buildFillPlanLocally(detectedFields.fields, profile);
 
@@ -507,7 +509,7 @@ const AppContent = () => {
           );
           if (unmapped.length > 0) {
             try {
-              const result = await mapFieldsMutation.mutateAsync({ fields: unmapped });
+              const result = await mapFieldsMutation.mutateAsync({ fields: unmapped, url: tab.url });
               Object.assign(fillPlan, result.fillPlan || {});
             } catch {
               // server mapping is best-effort
@@ -567,8 +569,8 @@ const AppContent = () => {
       if (filledArr.length > 0 || fillResult?.success) {
         const profileKeyToValue = buildProfileKeyToValue(profile);
         setFillReport({
-          filled: filledArr.map((key) => ({ key, value: profileKeyToValue[key] ?? '' })),
-          skipped: filledArr.length === 0 ? 0 : Math.max(0, 8 - filledArr.length),
+          filled: filledArr.map((key) => ({ key, label: formFields.find((field) => field.key === key)?.label, value: fillPlan[key] ?? profileKeyToValue[key] ?? '' })),
+          skipped: Math.max(0, formFields.length - filledArr.length),
         });
         toast.success(
           `${filledArr.length} field${filledArr.length !== 1 ? 's' : ''} filled successfully`

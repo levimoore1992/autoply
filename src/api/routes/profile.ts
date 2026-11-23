@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { profileRepository } from '../../db/repositories/profile';
 import { createAIProvider } from '../../ai/provider';
 import type { Profile } from '../../types';
+import {
+  DetectedApplicationFieldSchema,
+  draftApplicationAnswers,
+} from '../../ai/application-answers';
+import { loadAshbyPosting } from '../../scrapers/ashby-posting-api';
 
 const ProfileBodySchema = z.object({
   id: z.number().optional(),
@@ -143,15 +148,18 @@ export function registerProfileRoutes(app: FastifyInstance): void {
     }
   });
 
-  // Profile field mapping (lightweight, no AI)
+  // Deterministic profile mapping plus AI drafts for custom application questions.
   app.post('/profile/map-fields', async (request, reply) => {
-    const { fields } = request.body as {
-      fields: Array<{ key: string; type: string; label: string }>;
-    };
-
-    if (!Array.isArray(fields) || fields.length === 0) {
-      return reply.status(400).send({ error: 'fields must be a non-empty array' });
+    const parsed = z
+      .object({
+        fields: z.array(DetectedApplicationFieldSchema).min(1).max(100),
+        url: z.string().url().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Valid application fields are required' });
     }
+    const { fields, url } = parsed.data;
 
     const profile = profileRepository.findFirst();
     if (!profile) {
@@ -173,6 +181,7 @@ export function registerProfileRoutes(app: FastifyInstance): void {
 
     const fillPlan: Record<string, string> = {};
     for (const field of fields) {
+      if (field.currentValue?.trim() || /sponsor/i.test(field.label)) continue;
       const fieldKey = field.key || field.label;
       const normalized = fieldKey.toLowerCase().replace(/[^a-z0-9]/g, '');
       for (const [profileKey, profileValue] of Object.entries(profileData)) {
@@ -196,6 +205,31 @@ export function registerProfileRoutes(app: FastifyInstance): void {
         });
         if (value) fillPlan[fieldKey] = value;
       }
+    }
+    const remaining = fields.filter((field) => !fillPlan[field.key]);
+    let jobDescription = '';
+    if (
+      url &&
+      new URL(url).hostname === 'jobs.ashbyhq.com' &&
+      remaining.some((field) => field.type === 'textarea' && !field.currentValue)
+    ) {
+      try {
+        jobDescription = (await loadAshbyPosting(url)).description;
+      } catch {
+        /* Profile-based answers can still be drafted. */
+      }
+    }
+    try {
+      Object.assign(
+        fillPlan,
+        await draftApplicationAnswers(createAIProvider(), profile, remaining, jobDescription)
+      );
+    } catch {
+      // Keep deterministic values usable if the AI provider is unavailable.
+      return {
+        fillPlan,
+        warning: 'Some custom answers could not be drafted. Review unanswered fields.',
+      };
     }
     return { fillPlan };
   });

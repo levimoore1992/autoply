@@ -96,7 +96,6 @@ const HUMAN_ONLY_PATTERNS = [
   /salary.*expectation|expected.*salary|desired.*salary/i,
   /date.*birth|dob/i,
   /street.*address|address.*line/i,
-  /visa.*sponsor/i,
   /passport/i,
 ];
 
@@ -134,22 +133,24 @@ function isVisible(el: Element): boolean {
 function getFieldLabel(el: Element): string {
   const input = el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
-  // Try autocomplete first
-  const autocomplete = input.getAttribute('autocomplete');
-  if (autocomplete) return autocomplete;
-
   // Try aria-label
   const ariaLabel = input.getAttribute('aria-label');
   if (ariaLabel) return ariaLabel;
 
-  // Try placeholder
-  const placeholder = input.getAttribute('placeholder');
-  if (placeholder) return placeholder;
+  const labelledBy = input.getAttribute('aria-labelledby');
+  if (labelledBy) {
+    const label = labelledBy
+      .split(/\s+/)
+      .map((id) => document.getElementById(id)?.textContent ?? '')
+      .join(' ')
+      .trim();
+    if (label) return label;
+  }
 
   // Try associated label
   const id = input.id;
   if (id) {
-    const label = document.querySelector(`label[for="${id}"]`);
+    const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
     if (label?.textContent) return label.textContent.trim();
   }
 
@@ -171,11 +172,46 @@ function getFieldLabel(el: Element): string {
     }
   }
 
+  const autocomplete = input.getAttribute('autocomplete');
+  if (autocomplete && !['off', 'on'].includes(autocomplete)) return autocomplete;
+
+  const placeholder = input.getAttribute('placeholder');
+  if (placeholder && !/^type here|select|choose/i.test(placeholder)) return placeholder;
+
   // Try name attribute
   const name = input.name;
   if (name) return name;
 
   return '';
+}
+
+const CHOICE_SELECTOR = 'button[aria-pressed], [role="radio"]';
+
+function choiceButtons(group: Element): HTMLElement[] {
+  return Array.from(group.querySelectorAll<HTMLElement>(CHOICE_SELECTOR)).filter(
+    (button) => isVisible(button) && button.getAttribute('type') !== 'submit'
+  );
+}
+
+function collectChoiceGroups(): Element[] {
+  const groups = new Set<Element>();
+  for (const button of Array.from(document.querySelectorAll(CHOICE_SELECTOR))) {
+    const group = button.closest(
+      'fieldset, [role="radiogroup"], .ashby-application-form-field, [class*="FormField"], [role="group"]'
+    );
+    if (group && choiceButtons(group).length > 1 && getFieldLabel(group)) groups.add(group);
+  }
+  return [...groups];
+}
+
+function choiceText(button: HTMLElement): string {
+  return (button.getAttribute('aria-label') || button.textContent || '').trim();
+}
+
+function choiceSelected(button: HTMLElement): boolean {
+  return (
+    button.getAttribute('aria-pressed') === 'true' || button.getAttribute('aria-checked') === 'true'
+  );
 }
 
 function dispatchReactEvents(el: Element): void {
@@ -407,77 +443,6 @@ async function fillCheckbox(el: Element, value: string): Promise<boolean> {
   }
 }
 
-async function findAndFillField(
-  profile: Profile,
-  profileKey: string,
-  selectors: string[]
-): Promise<boolean> {
-  const value = profile[profileKey as keyof Profile];
-  if (!value) return false;
-
-  for (const selector of selectors) {
-    try {
-      const elements = Array.from(document.querySelectorAll(selector));
-      for (const el of elements) {
-        if (!isFormElement(el)) continue;
-        if (!isVisible(el)) continue;
-
-        const label = getFieldLabel(el);
-        if (shouldSkipField(label)) continue;
-
-        const fieldType = (el as HTMLInputElement).type;
-
-        if (fieldType === 'select' || el.tagName === 'SELECT') {
-          if (await fillSelect(el, value)) return true;
-        } else if (fieldType === 'radio') {
-          if (await fillRadio(el, value)) return true;
-        } else if (fieldType === 'checkbox') {
-          if (await fillCheckbox(el, value)) return true;
-        } else if (fieldType === 'file') {
-          // File uploads handled separately
-          continue;
-        } else {
-          if (await fillTextInput(el, value)) return true;
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return false;
-}
-
-async function findAndFillByLabelMatch(profile: Profile, labelText: string): Promise<boolean> {
-  // Match label text to profile fields
-  if (/first|given|fname/i.test(labelText)) {
-    return findAndFillField(profile, 'firstName', ['input:not([type])', 'input[type="text"]']);
-  }
-  if (/last|surname|family|lname/i.test(labelText)) {
-    return findAndFillField(profile, 'lastName', ['input:not([type])', 'input[type="text"]']);
-  }
-  if (/email|mail/i.test(labelText)) {
-    return findAndFillField(profile, 'email', ['input[type="email"]', 'input:not([type])']);
-  }
-  if (/phone|tel|mobile|cell/i.test(labelText)) {
-    return findAndFillField(profile, 'phone', ['input[type="tel"]', 'input:not([type])']);
-  }
-  if (/linkedin/i.test(labelText)) {
-    return findAndFillField(profile, 'linkedin', ['input[type="url"]', 'input:not([type])']);
-  }
-  if (/github|gh/i.test(labelText)) {
-    return findAndFillField(profile, 'github', ['input[type="url"]', 'input:not([type])']);
-  }
-  if (/portfolio|website|personal/i.test(labelText)) {
-    return findAndFillField(profile, 'portfolio', ['input[type="url"]', 'input:not([type])']);
-  }
-  if (/city|location/i.test(labelText)) {
-    return findAndFillField(profile, 'location', ['input:not([type])']);
-  }
-
-  return false;
-}
-
 async function uploadResumeFile(base64: string, filename: string): Promise<boolean> {
   const fileInputs = Array.from(
     document.querySelectorAll('input[type="file"]')
@@ -688,21 +653,46 @@ async function fillByFillPlan(
   for (const [fieldKey, value] of Object.entries(fillPlan)) {
     if (!value) continue;
 
+    const choiceGroup = document.querySelector(
+      `[data-autoply-choice-key="${CSS.escape(fieldKey)}"]`
+    );
+    if (choiceGroup) {
+      if (shouldSkipField(getFieldLabel(choiceGroup))) continue;
+      const button = choiceButtons(choiceGroup).find(
+        (option) => choiceText(option).toLowerCase() === value.toLowerCase().trim()
+      );
+      if (button) {
+        if (!choiceSelected(button)) button.click();
+        await humanJitter(80, 150);
+        if (choiceSelected(button)) filled.push(fieldKey);
+      }
+      continue;
+    }
+
     let didFill = false;
 
     if (looksLikeLabel(fieldKey)) {
-      // Key is a human-readable label — use label-based matching
-      didFill = await findAndFillByLabelMatch(
-        { [fieldKey]: value } as unknown as Profile,
-        fieldKey
+      const field = Array.from(document.querySelectorAll('input, select, textarea')).find(
+        (el) =>
+          isVisible(el) &&
+          getFieldLabel(el)
+            .replace(/\s*\*$/, '')
+            .toLowerCase() === fieldKey.replace(/\s*\*$/, '').toLowerCase()
       );
+      if (field && !shouldSkipField(getFieldLabel(field))) {
+        didFill =
+          field.tagName === 'SELECT'
+            ? await fillSelect(field, value)
+            : await fillTextInput(field, value);
+      }
     } else {
       // Key is a DOM attribute value — try name/id selectors
       const selectors = [
-        `[name="${fieldKey}"]`,
-        `[id="${fieldKey}"]`,
-        `[name="${fieldKey.toLowerCase()}"]`,
-        `[data-field="${fieldKey}"]`,
+        `[name="${CSS.escape(fieldKey)}"]`,
+        `[id="${CSS.escape(fieldKey)}"]`,
+        `[name="${CSS.escape(fieldKey.toLowerCase())}"]`,
+        `[data-field="${CSS.escape(fieldKey)}"]`,
+        `[data-autoply-field-key="${CSS.escape(fieldKey)}"]`,
       ];
 
       for (const selector of selectors) {
@@ -715,7 +705,7 @@ async function fillByFillPlan(
           // Skip if element already has the correct value (idempotent check)
           const currentVal = (el as HTMLInputElement).value;
           if (currentVal && currentVal === value) {
-            didFill = true;
+            didFill = false;
             break;
           }
 
@@ -821,7 +811,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_FORM_FIELDS') {
-    const fields: Array<{ key: string; type: string; label: string; autocomplete?: string }> = [];
+    const fields: Array<{
+      key: string;
+      type: string;
+      label: string;
+      options?: string[];
+      currentValue?: string;
+      autocomplete?: string;
+    }> = [];
 
     const inputs = Array.from(
       document.querySelectorAll('input:not([type="hidden"]), select, textarea')
@@ -831,11 +828,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (!isVisible(input)) continue;
 
       const el = input as HTMLInputElement;
+      const key = el.name || el.id || `autoply-field-${fields.length}`;
+      el.setAttribute('data-autoply-field-key', key);
       fields.push({
-        key: el.name || el.id || '',
+        key,
         type: el.type || el.tagName.toLowerCase(),
         label: getFieldLabel(input),
+        currentValue: el.type === 'file' ? undefined : el.value,
+        options:
+          el.tagName === 'SELECT'
+            ? Array.from((input as HTMLSelectElement).options).map((option) => option.text)
+            : undefined,
         autocomplete: el.getAttribute('autocomplete') || undefined,
+      });
+    }
+
+    for (const [index, group] of collectChoiceGroups().entries()) {
+      const key = `autoply-choice-${index}`;
+      group.setAttribute('data-autoply-choice-key', key);
+      const buttons = choiceButtons(group);
+      fields.push({
+        key,
+        type: 'radio',
+        label: getFieldLabel(group),
+        options: buttons.map(choiceText),
+        currentValue: buttons.filter(choiceSelected).map(choiceText).join(', '),
       });
     }
 

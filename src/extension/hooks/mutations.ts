@@ -41,7 +41,8 @@ interface BulkProcessData {
 }
 
 interface MapFieldsData {
-  fields: Array<{ key: string; type: string; label: string }>;
+  fields: import('../../ai/application-answers').DetectedApplicationField[];
+  url?: string;
 }
 
 // ── Mutations ────────────────────────────────────────────────────────────────
@@ -217,11 +218,12 @@ export function useMapFields() {
   return useMutation({
     mutationFn: async ({
       fields,
+      url,
     }: MapFieldsData): Promise<{ fillPlan: Record<string, string> }> => {
       return apiFetchJson('/profile/map-fields', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields }),
+        body: JSON.stringify({ fields, url }),
       });
     },
   });

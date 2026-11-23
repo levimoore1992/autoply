@@ -21,7 +21,7 @@ type ActiveTab =
   | 'discovery';
 
 export interface FillReport {
-  filled: Array<{ key: string; value: string }>;
+  filled: Array<{ key: string; value: string; label?: string }>;
   skipped: number;
 }
 
