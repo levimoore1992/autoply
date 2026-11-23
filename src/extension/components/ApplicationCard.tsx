@@ -23,7 +23,7 @@ export const FilterTabs = ({
   active: string;
   onChange: (filter: string) => void;
 }) => {
-  const filters = ['all', 'pending', 'filled', 'submitted', 'failed'];
+  const filters = ['all', 'review_required', 'pending', 'filled', 'submitted', 'failed'];
   return (
     <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide pb-1 -mx-2 px-2">
       {filters.map((filter) => (
@@ -36,7 +36,9 @@ export const FilterTabs = ({
               : 'text-(--text-tertiary) hover:text-(--text-secondary) hover:bg-(--bg-tertiary)'
           }`}
         >
-          {filter.charAt(0).toUpperCase() + filter.slice(1)}
+          {filter === 'review_required'
+            ? 'Review'
+            : filter.charAt(0).toUpperCase() + filter.slice(1)}
         </button>
       ))}
     </div>

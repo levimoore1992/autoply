@@ -10,3 +10,32 @@ export function getJobUrl(url: string): string | undefined {
     return undefined;
   }
 }
+import type { Application } from '../../types';
+
+/** Collect distinct valid links for jobs that still need review. */
+export function getReviewJobUrls(applications: Application[]): string[] {
+  return [
+    ...new Set(
+      applications
+        .filter((app) => ['pending', 'review_required'].includes(app.status))
+        .map((app) => getJobUrl(app.url))
+        .filter((url): url is string => Boolean(url))
+    ),
+  ];
+}
+
+/** Open jobs using the tabs API so the browser does not block multiple popups. */
+export async function openJobTabs(urls: string[]): Promise<{ opened: number; failed: number }> {
+  const validUrls = [...new Set(urls.map(getJobUrl).filter((url): url is string => Boolean(url)))];
+  let opened = 0;
+  let failed = 0;
+  for (const url of validUrls) {
+    try {
+      await chrome.tabs.create({ url, active: opened === 0 });
+      opened++;
+    } catch {
+      failed++;
+    }
+  }
+  return { opened, failed };
+}
