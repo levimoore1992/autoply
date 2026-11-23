@@ -50,6 +50,7 @@ import { ChatSection } from './components/ChatSection';
 // Constants
 import { NON_SCRIPTABLE_PROTOCOLS, UNSUPPORTED_HOSTNAMES } from './constants';
 import { getApplicationPreviewDocs } from './utils/document-previews';
+import { documentJobKey } from './utils/job-tabs';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -473,7 +474,9 @@ const AppContent = () => {
       }
 
       // Kick off resume download in parallel with form field detection
-      const generatedDocs = generateDocsMutation.data;
+      const latestDocs = generateDocsMutation.data;
+      const generatedDocs = latestDocs && tab.url && documentJobKey(latestDocs.jobUrl) === documentJobKey(tab.url) ? latestDocs : null;
+      if (latestDocs?.resume && !generatedDocs) toast.warning('The generated resume belongs to a different job. Generate a resume for this job before attaching it.');
       const resumePromise: Promise<{ base64: string; filename: string } | null> =
         generatedDocs?.resume
           ? downloadDocumentMutation
@@ -543,6 +546,7 @@ const AppContent = () => {
 
       // Send to main frame first
       const fillResult = await sendMessageToTab(tab.id, profilePayload, tab.url);
+      if (fillResult?.errors?.length) toast.warning(fillResult.errors.join(' '));
       let filledArr: string[] = fillResult?.filled || [];
 
       // For Ashby and other iframe-based platforms, also try all frames

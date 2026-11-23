@@ -39,3 +39,11 @@ export async function openJobTabs(urls: string[]): Promise<{ opened: number; fai
   }
   return { opened, failed };
 }
+
+/** Match a generated document to its job while allowing overview/application navigation. */
+export function documentJobKey(url: string): string {
+  const parsed = new URL(url);
+  parsed.hash = '';
+  parsed.pathname = parsed.pathname.replace(/\/(?:application|apply)\/?$/, '').replace(/\/$/, '');
+  return parsed.href;
+}

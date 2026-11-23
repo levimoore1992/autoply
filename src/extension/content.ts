@@ -1,6 +1,7 @@
 // Content script for Autoply Copilot
 // Works entirely client-side using Chrome's autocomplete attribute + semantic matching
 // No AI needed for basic form filling - this is how simplify.jobs works
+import { resumeInputPriority } from './utils/resume-input';
 
 const DEBUG = false;
 function debugLog(...args: unknown[]) {
@@ -160,7 +161,7 @@ function getFieldLabel(el: Element): string {
 
   // Try field container label (Ashby, Greenhouse, Lever, Workday)
   const container = input.closest(
-    '.ashby-application-form-field, [data-testid*="field"], [data-testid*="question"], [class*="form-field"], [class*="FormField"], fieldset, [role="group"]'
+    '.ashby-application-form-field, .ashby-application-form-field-entry, [data-field-path], [data-testid*="field"], [data-testid*="question"], [class*="form-field"], [class*="FormField"], fieldset, [role="group"]'
   );
   if (container) {
     const labelEl = container.querySelector(
@@ -197,7 +198,7 @@ function collectChoiceGroups(): Element[] {
   const groups = new Set<Element>();
   for (const button of Array.from(document.querySelectorAll(CHOICE_SELECTOR))) {
     const group = button.closest(
-      'fieldset, [role="radiogroup"], .ashby-application-form-field, [class*="FormField"], [role="group"]'
+      'fieldset, [role="radiogroup"], .ashby-application-form-field, .ashby-application-form-field-entry, [data-field-path], [class*="FormField"], [role="group"]'
     );
     if (group && choiceButtons(group).length > 1 && getFieldLabel(group)) groups.add(group);
   }
@@ -448,9 +449,28 @@ async function uploadResumeFile(base64: string, filename: string): Promise<boole
     document.querySelectorAll('input[type="file"]')
   ) as HTMLInputElement[];
 
-  for (const input of fileInputs) {
+  const candidates = fileInputs
+    .map((input) => {
+      const container =
+        input.closest(
+          '.ashby-application-form-field, .ashby-application-form-field-entry, [data-field-path], [data-testid*="field"], [class*="FormField"], fieldset'
+        ) || input.parentElement;
+      return {
+        input,
+        priority: resumeInputPriority({
+          name: input.name,
+          id: input.id,
+          label: getFieldLabel(input),
+          context: container?.textContent || '',
+          accept: input.accept,
+        }),
+      };
+    })
+    .filter(({ priority }) => priority >= 0)
+    .sort((a, b) => b.priority - a.priority);
+  for (const { input } of candidates) {
     const container = input.closest(
-      '.ashby-application-form-field, [data-testid*="field"], [data-testid*="resume"], [class*="resume"], label, fieldset, div'
+      '.ashby-application-form-field, .ashby-application-form-field-entry, [data-field-path], [data-testid*="field"], [data-testid*="resume"], [class*="resume"], label, fieldset, div'
     );
     const context = (
       input.name +
@@ -759,6 +779,8 @@ async function handleAutofillWithProfile(
     const filename = _documents.resumeFilename || 'resume.pdf';
     const uploaded = await uploadResumeFile(_documents.resume, filename);
     if (uploaded) result.filled.push('resume_upload');
+    else
+      result.errors.push('Resume could not be attached. Review the file field before submitting.');
   }
 
   debugLog(`Autoply: Filled ${result.filled.length} fields:`, result.filled.join(', '));

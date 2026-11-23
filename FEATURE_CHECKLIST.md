@@ -19,4 +19,7 @@ Each feature is committed separately. Existing local engine/setup changes are ou
 
 - [x] Generate Ashby resumes through its public posting API, without requiring another installed browser.
 - [x] Draft custom application answers and fill supported choice controls through Autoply.
-- [ ] Run the complete app-driven form fill, attach its unchanged resume, and open Changes for review without submitting.
+- [x] Attach the generated resume to the actual resume field and bind it to the current job.
+- [x] Run the complete app-driven form fill, attach its unchanged resume, and open Changes for review without submitting.
+
+Follow-up verification: Chrome showed a five-field fill report; name, email, sponsorship No, the app-generated interest response, and the required resume attachment were present. The app-generated resume was left unchanged and its Changes view was opened. No submission occurred. Automated checks: 213 passed, 14 skipped; typecheck, focused lint, and extension build passed.

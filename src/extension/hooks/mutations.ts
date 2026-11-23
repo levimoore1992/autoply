@@ -16,6 +16,7 @@ interface GenerateDocumentsData {
 }
 
 export interface GeneratedDocumentsResult {
+  jobUrl: string;
   sourceResume?: string;
   /** PDF filename for download/preview */
   resume?: string;
@@ -157,6 +158,7 @@ export function useGenerateDocuments() {
       if (!data.success) throw new Error(data.error || 'Failed to generate documents');
 
       return {
+        jobUrl: url,
         resume: data.resumePath?.split('/').pop(),
         coverLetter: data.coverLetterPath?.split('/').pop(),
         resumeContent: data.resumeContent,
