@@ -49,6 +49,7 @@ import { ChatSection } from './components/ChatSection';
 
 // Constants
 import { NON_SCRIPTABLE_PROTOCOLS, UNSUPPORTED_HOSTNAMES } from './constants';
+import { getApplicationPreviewDocs } from './utils/document-previews';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -662,6 +663,7 @@ const AppContent = () => {
                     docs.push({
                       title: `Resume — ${currentTabUrl ? new URL(currentTabUrl).hostname.replace('www.', '') : ''}`,
                       content: data.resumeContent,
+                      originalContent: data.sourceResume,
                       filename: data.resume,
                       type: 'resume',
                     });
@@ -682,6 +684,7 @@ const AppContent = () => {
                   setPreviewDoc({
                     title: `Resume — ${currentTabUrl ? new URL(currentTabUrl).hostname.replace('www.', '') : ''}`,
                     content: data.resumeContent,
+                    originalContent: data.sourceResume,
                     filename: data.resume,
                     type: 'resume',
                   });
@@ -843,32 +846,10 @@ const AppContent = () => {
 
       {/* Preview modals */}
       {previewApp && (previewApp.generated_resume || previewApp.generated_cover_letter) && (
-        <>
-          {previewApp.generated_resume && (
-            <PreviewModal
-              docs={[
-                {
-                  title: `Resume — ${previewApp.company || 'Application'}`,
-                  content: previewApp.generated_resume,
-                  type: 'resume',
-                },
-              ]}
-              onClose={() => setPreviewApp(null)}
-            />
-          )}
-          {!previewApp.generated_resume && previewApp.generated_cover_letter && (
-            <PreviewModal
-              docs={[
-                {
-                  title: `Cover Letter — ${previewApp.company || 'Application'}`,
-                  content: previewApp.generated_cover_letter,
-                  type: 'cover-letter',
-                },
-              ]}
-              onClose={() => setPreviewApp(null)}
-            />
-          )}
-        </>
+        <PreviewModal
+          docs={getApplicationPreviewDocs(previewApp, profile)}
+          onClose={() => setPreviewApp(null)}
+        />
       )}
       {previewDocs && previewDocs.length > 0 && (
         <PreviewModal docs={previewDocs} onClose={() => setPreviewDocs(null)} />

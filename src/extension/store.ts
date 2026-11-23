@@ -5,6 +5,8 @@ import type { Application, Profile } from '../types';
 export interface DocPreviewState {
   title: string;
   content: string;
+  originalContent?: string;
+  comparisonLabel?: string;
   filename?: string;
   type: 'resume' | 'cover-letter';
 }

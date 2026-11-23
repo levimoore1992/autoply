@@ -16,6 +16,7 @@ interface GenerateDocumentsData {
 }
 
 export interface GeneratedDocumentsResult {
+  sourceResume?: string;
   /** PDF filename for download/preview */
   resume?: string;
   /** PDF filename for download/preview */
@@ -143,6 +144,7 @@ export function useGenerateDocuments() {
         resumePath?: string;
         coverLetterPath?: string;
         resumeContent?: string;
+        sourceResume?: string;
         coverLetterContent?: string;
         error?: string;
       }>('/documents/generate', {
@@ -157,6 +159,7 @@ export function useGenerateDocuments() {
         resume: data.resumePath?.split('/').pop(),
         coverLetter: data.coverLetterPath?.split('/').pop(),
         resumeContent: data.resumeContent,
+        sourceResume: data.sourceResume,
         coverLetterContent: data.coverLetterContent,
       };
     },

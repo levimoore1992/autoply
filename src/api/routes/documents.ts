@@ -96,6 +96,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         resumePath: result.resumePath,
         coverLetterPath: result.coverLetterPath,
         resumeContent: result.resumeContent,
+        sourceResume: result.sourceResume,
         coverLetterContent: result.coverLetterContent,
       });
     } catch (error) {

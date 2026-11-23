@@ -1,13 +1,6 @@
 import React, { useRef, useMemo, useState, useEffect } from 'react';
-import {
-  FileText,
-  X,
-  Download,
-  Eye,
-  File as FilePdf,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react';
+import { ResumeDiff } from './ResumeDiff';
+import { X, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { getApiBaseUrl, getApiToken } from '../utils/api-config';
 
@@ -95,133 +88,108 @@ function renderMarkdown(md: string): string {
 export interface DocPreview {
   title: string;
   content: string;
+  originalContent?: string;
+  comparisonLabel?: string;
   filename?: string;
   type: 'resume' | 'cover-letter';
 }
 
-type PreviewTab = 'rendered' | 'pdf';
-
-// ── Document Pane (shared by single and dual views) ──────────────────────────
+type PreviewTab = 'rendered' | 'pdf' | 'changes';
 
 const DocPane = ({
   doc,
-  activeTab,
-  setActiveTab,
-  renderedHtml,
   previewUrl,
-  pdfError,
   onDownload,
 }: {
   doc: DocPreview;
-  activeTab: PreviewTab;
-  setActiveTab: (tab: PreviewTab) => void;
-  renderedHtml: string;
   previewUrl: string | null;
-  pdfError: boolean;
   onDownload: () => void;
-  onOpenInTab: () => void;
-}) => (
-  <div className="flex flex-col h-full min-h-0">
-    {/* Document header */}
-    <div className="flex items-center justify-between px-4 py-2 border-b border-(--border-subtle) bg-(--bg-secondary) shrink-0">
-      <div className="flex items-center gap-2 min-w-0">
-        <div className="w-6 h-6 rounded-md bg-purple-500/10 flex items-center justify-center text-purple-500 shrink-0">
-          <FileText className="w-3 h-3" />
-        </div>
-        <span className="text-xs font-semibold text-(--text-primary) truncate">
+}) => {
+  const [activeTab, setActiveTab] = useState<PreviewTab>(
+    doc.type === 'resume' && doc.originalContent !== undefined ? 'changes' : 'rendered'
+  );
+  const [pdfError, setPdfError] = useState(false);
+  const renderedHtml = useMemo(() => renderMarkdown(doc.content), [doc.content]);
+  const tabs: Array<{ id: PreviewTab; label: string }> = [
+    { id: 'rendered', label: 'Preview' },
+    ...(doc.type === 'resume' ? [{ id: 'changes' as const, label: 'Changes' }] : []),
+    ...(doc.filename ? [{ id: 'pdf' as const, label: 'PDF' }] : []),
+  ];
+
+  return (
+    <div className="flex flex-col h-full min-h-0 min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b border-(--border-subtle) bg-(--bg-secondary) shrink-0">
+        <span className="text-xs font-semibold text-(--text-primary)">
           {doc.type === 'resume' ? 'Resume' : 'Cover Letter'}
         </span>
-      </div>
-      <div className="flex items-center gap-1">
-        {previewUrl && (
-          <div className="flex rounded-lg bg-(--bg-tertiary) p-0.5 border border-(--border-subtle)">
-            <button
-              onClick={() => setActiveTab('rendered')}
-              className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
-                activeTab === 'rendered'
-                  ? 'bg-(--bg-elevated) text-(--text-primary) shadow-sm'
-                  : 'text-(--text-tertiary) hover:text-(--text-secondary)'
-              }`}
-              aria-pressed={activeTab === 'rendered'}
-            >
-              <Eye className="w-3 h-3 inline mr-0.5" />
-              Preview
-            </button>
-            <button
-              onClick={() => setActiveTab('pdf')}
-              className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
-                activeTab === 'pdf'
-                  ? 'bg-(--bg-elevated) text-(--text-primary) shadow-sm'
-                  : 'text-(--text-tertiary) hover:text-(--text-secondary)'
-              }`}
-              aria-pressed={activeTab === 'pdf'}
-            >
-              <FilePdf className="w-3 h-3 inline mr-0.5" />
-              PDF
-            </button>
-          </div>
-        )}
-        {doc.filename && (
-          <button
-            onClick={onDownload}
-            className="p-1.5 rounded-lg hover:bg-(--bg-tertiary) text-(--text-secondary) transition-colors"
-            title="Download PDF"
-            aria-label="Download PDF"
-          >
-            <Download className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
-    </div>
-
-    {/* Document content */}
-    <div className="flex-1 overflow-hidden">
-      {activeTab === 'pdf' && previewUrl && !pdfError ? (
-        <embed
-          src={previewUrl}
-          type="application/pdf"
-          className="w-full h-full"
-          onError={() => setActiveTab('rendered')}
-          title={doc.title}
-        />
-      ) : (
-        <div className="h-full overflow-y-auto p-4">
-          {activeTab === 'pdf' && (!previewUrl || pdfError) && (
-            <div className="mb-3 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] flex items-start gap-1.5">
-              <Eye className="w-3 h-3 shrink-0 mt-0.5" />
-              <span>
-                PDF unavailable. Showing rendered preview instead.
-                {doc.filename && (
-                  <>
-                    {' '}
-                    <button onClick={onDownload} className="underline hover:text-amber-200">
-                      Download PDF
-                    </button>
-                  </>
-                )}
-              </span>
-            </div>
-          )}
+        <div className="flex items-center gap-1">
           <div
-            className="prose prose-sm max-w-none text-(--text-primary)
-              prose-headings:text-(--text-primary)
-              prose-headings:font-bold prose-h1:text-lg prose-h2:text-base prose-h3:text-sm
+            className="flex rounded-lg bg-(--bg-tertiary) p-0.5 border border-(--border-subtle)"
+            role="group"
+            aria-label={`${doc.type === 'resume' ? 'Resume' : 'Cover letter'} view`}
+          >
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${activeTab === tab.id ? 'bg-(--bg-elevated) text-(--text-primary) shadow-sm' : 'text-(--text-secondary) hover:text-(--text-primary)'}`}
+                aria-pressed={activeTab === tab.id}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          {doc.filename && (
+            <button
+              onClick={onDownload}
+              className="p-1.5 rounded-lg hover:bg-(--bg-tertiary) text-(--text-secondary)"
+              title="Download PDF"
+              aria-label="Download PDF"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {activeTab === 'changes' ? (
+          <ResumeDiff
+            original={doc.originalContent}
+            tailored={doc.content}
+            comparisonLabel={doc.comparisonLabel}
+          />
+        ) : activeTab === 'pdf' && previewUrl && !pdfError ? (
+          <embed
+            src={previewUrl}
+            type="application/pdf"
+            className="w-full h-full"
+            onError={() => setPdfError(true)}
+            title={doc.title}
+          />
+        ) : (
+          <div className="h-full overflow-y-auto p-4">
+            {activeTab === 'pdf' && (
+              <p className="mb-3 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-200">
+                PDF unavailable. Showing the text preview instead.
+              </p>
+            )}
+            <div
+              className="prose prose-sm max-w-none text-(--text-primary)
+              prose-headings:text-(--text-primary) prose-headings:font-bold prose-h1:text-lg prose-h2:text-base prose-h3:text-sm
               prose-p:text-(--text-secondary) prose-p:leading-relaxed prose-p:text-xs
               prose-li:text-(--text-secondary) prose-li:text-xs
               prose-code:text-(--accent) prose-code:bg-(--bg-tertiary) prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
-              prose-a:text-(--accent) prose-a:underline
-              prose-strong:text-(--text-primary)
-              prose-hr:border-(--border-subtle)"
-            dangerouslySetInnerHTML={{ __html: renderedHtml }}
-          />
-        </div>
-      )}
+              prose-a:text-(--accent) prose-a:underline prose-strong:text-(--text-primary) prose-hr:border-(--border-subtle)"
+              dangerouslySetInnerHTML={{ __html: renderedHtml }}
+            />
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
-// ── Component ────────────────────────────────────────────────────────────────
-
+/** Preview tailored documents, including exact line changes against their source resume. */
 export const PreviewModal = ({
   docs,
   initialIndex = 0,
@@ -232,19 +200,18 @@ export const PreviewModal = ({
   onClose: () => void;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [docIndex, setDocIndex] = useState(initialIndex);
-  const [activeTabs, setActiveTabs] = useState<Record<number, PreviewTab>>({});
-  const [pdfErrors, setPdfErrors] = useState<Record<number, boolean>>({});
-  const [showSplit, setShowSplit] = useState(docs.length >= 2);
+  const [docIndex, setDocIndex] = useState(Math.min(initialIndex, docs.length - 1));
+  const [showSplit, setShowSplit] = useState(docs.length === 2);
   const [apiBase, setApiBase] = useState('http://localhost:8088');
   const [apiToken, setApiTokenState] = useState('');
+  useFocusTrap(containerRef, { onClose });
 
   useEffect(() => {
     getApiBaseUrl()
       .then(setApiBase)
       .catch(() => {});
     getApiToken()
-      .then((t) => setApiTokenState(t || ''))
+      .then((token) => setApiTokenState(token || ''))
       .catch(() => {});
   }, []);
 
@@ -253,334 +220,90 @@ export const PreviewModal = ({
     const url = `${apiBase}/documents/${kind}/${encodeURIComponent(filename)}`;
     return apiToken ? `${url}?token=${encodeURIComponent(apiToken)}` : url;
   };
-
-  useFocusTrap(containerRef, { onClose });
-
-  const currentDoc = docs[docIndex];
-  const renderedHtml = useMemo(
-    () => (currentDoc ? renderMarkdown(currentDoc.content) : ''),
-    [currentDoc?.content]
-  );
-
-  // Reset per-doc state when switching docs
-  useEffect(() => {
-    if (!(docIndex in activeTabs)) {
-      setActiveTabs((prev) => ({ ...prev, [docIndex]: 'pdf' }));
-    }
-    if (!(docIndex in pdfErrors)) {
-      setPdfErrors((prev) => ({ ...prev, [docIndex]: false }));
-    }
-  }, [docIndex]);
-
-  const activeTab = activeTabs[docIndex] ?? 'pdf';
-  const pdfError = pdfErrors[docIndex] ?? false;
-
-  const previewUrl = docUrl('preview', currentDoc?.filename);
-
-  const handleDownload = () => {
-    const url = docUrl('download', currentDoc?.filename);
-    if (!url || !currentDoc?.filename) return;
+  const handleDownload = (doc: DocPreview) => {
+    const url = docUrl('download', doc.filename);
+    if (!url || !doc.filename) return;
     const link = document.createElement('a');
     link.href = url;
-    link.download = currentDoc.filename;
+    link.download = doc.filename;
     link.click();
   };
+  const visibleDocs = showSplit ? docs : docs.slice(docIndex, docIndex + 1);
+  if (!docs.length) return null;
 
-  const setActiveTabForCurrent = (tab: PreviewTab) => {
-    setActiveTabs((prev) => ({ ...prev, [docIndex]: tab }));
-  };
-
-  // ── Split view (both documents side-by-side) ─────────────────────────
-  // Hooks must stay above the early return — previously two useMemos
-  // lived inside this branch (conditional hooks bug).
-  const splitHtml0 = useMemo(() => renderMarkdown(docs[0]?.content || ''), [docs[0]?.content]);
-  const splitHtml1 = useMemo(() => renderMarkdown(docs[1]?.content || ''), [docs[1]?.content]);
-  if (showSplit && docs.length === 2) {
-    const doc0 = docs[0];
-    const doc1 = docs[1];
-    const tab0 = activeTabs[0] ?? 'pdf';
-    const tab1 = activeTabs[1] ?? 'pdf';
-    const err0 = pdfErrors[0] ?? false;
-    const err1 = pdfErrors[1] ?? false;
-    const url0 = docUrl('preview', doc0.filename);
-    const url1 = docUrl('preview', doc1.filename);
-    const html0 = splitHtml0;
-    const html1 = splitHtml1;
-
-    return (
-      <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in overscroll-contain"
-        onClick={(e) => e.target === e.currentTarget && onClose()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="split-preview-title"
-      >
-        <div
-          ref={containerRef}
-          className="bg-(--bg-secondary) w-full sm:max-w-5xl sm:rounded-xl rounded-t-xl h-[90vh] sm:h-[90vh] flex flex-col animate-slide-up sm:animate-scale-in"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-(--border-subtle) shrink-0">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500 border border-purple-500/20 shrink-0">
-                <FileText className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <h3
-                  id="split-preview-title"
-                  className="text-sm font-semibold text-(--text-primary) truncate"
-                >
-                  Resume & Cover Letter
-                </h3>
-                <p className="text-[10px] text-(--text-tertiary) mt-0.5">
-                  Side-by-side preview — scroll each document independently
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0 ml-3">
-              <button
-                onClick={() => setShowSplit(false)}
-                className="px-2.5 py-1 text-xs font-medium rounded-lg bg-(--bg-tertiary) hover:bg-(--bg-hover) text-(--text-secondary) transition-colors"
-                title="Single document view"
-              >
-                Single View
-              </button>
-              <button
-                onClick={onClose}
-                className="p-2 rounded-lg hover:bg-(--bg-tertiary) text-(--text-tertiary) transition-colors"
-                aria-label="Close preview"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Body: two panes */}
-          <div className="flex-1 flex flex-col sm:flex-row min-h-0">
-            {/* Resume pane */}
-            <div className="flex-1 flex flex-col min-h-0 border-r border-(--border-subtle)">
-              <DocPane
-                doc={doc0}
-                activeTab={tab0}
-                setActiveTab={(t) => setActiveTabs((p) => ({ ...p, [0]: t }))}
-                renderedHtml={html0}
-                previewUrl={url0}
-                pdfError={err0}
-                onDownload={() => {
-                  const url = docUrl('download', doc0.filename);
-                  if (!doc0.filename || !url) return;
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = doc0.filename;
-                  link.click();
-                }}
-                onOpenInTab={() => url0 && window.open(url0, '_blank')}
-              />
-            </div>
-
-            {/* Cover Letter pane */}
-            <div className="flex-1 flex flex-col min-h-0">
-              <DocPane
-                doc={doc1}
-                activeTab={tab1}
-                setActiveTab={(t) => setActiveTabs((p) => ({ ...p, [1]: t }))}
-                renderedHtml={html1}
-                previewUrl={url1}
-                pdfError={err1}
-                onDownload={() => {
-                  const url = docUrl('download', doc1.filename);
-                  if (!doc1.filename || !url) return;
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = doc1.filename;
-                  link.click();
-                }}
-                onOpenInTab={() => url1 && window.open(url1, '_blank')}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Single doc view ─────────────────────────────────────────────────
   return (
     <div
       className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in overscroll-contain"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(event) => event.target === event.currentTarget && onClose()}
       role="dialog"
       aria-modal="true"
       aria-labelledby="preview-title"
     >
       <div
         ref={containerRef}
-        className="bg-(--bg-secondary) w-full sm:max-w-3xl sm:rounded-xl rounded-t-xl h-[88vh] sm:h-auto sm:max-h-[92vh] flex flex-col animate-slide-up sm:animate-scale-in"
+        className={`bg-(--bg-secondary) w-full ${showSplit ? 'sm:max-w-5xl' : 'sm:max-w-3xl'} sm:rounded-xl rounded-t-xl h-[90vh] flex flex-col min-w-0 animate-slide-up sm:animate-scale-in`}
       >
-        {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between p-4 border-b border-(--border-subtle) shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500 border border-purple-500/20 shrink-0">
-              <FileText className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <h3
-                id="preview-title"
-                className="text-base font-semibold text-(--text-primary) truncate"
-              >
-                {currentDoc?.title}
-              </h3>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0 ml-3">
-            {/* Doc switcher (when multiple docs) */}
-            {docs.length >= 2 && (
-              <div className="flex items-center gap-1 mr-1">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-(--border-subtle) shrink-0">
+          <h3
+            id="preview-title"
+            className="text-sm font-semibold text-(--text-primary) min-w-0 flex-1"
+          >
+            {showSplit ? 'Resume & Cover Letter' : docs[docIndex]?.title}
+          </h3>
+          <div className="flex items-center gap-1">
+            {!showSplit && docs.length > 1 && (
+              <>
                 <button
-                  onClick={() => setDocIndex(Math.max(0, docIndex - 1))}
+                  onClick={() => setDocIndex((index) => index - 1)}
                   disabled={docIndex === 0}
-                  className="p-1 rounded-md hover:bg-(--bg-tertiary) text-(--text-secondary) disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  title="Previous document"
+                  className="p-1.5 disabled:opacity-30"
+                  aria-label="Previous document"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="text-[10px] font-medium text-(--text-tertiary) min-w-15 text-center">
-                  {docIndex === 0 ? 'Resume' : 'Cover Letter'}
-                  <span className="block text-[9px] opacity-60">
-                    {docIndex + 1} of {docs.length}
-                  </span>
+                <span className="text-xs text-(--text-secondary)">
+                  {docIndex + 1}/{docs.length}
                 </span>
                 <button
-                  onClick={() => setDocIndex(Math.min(docs.length - 1, docIndex + 1))}
+                  onClick={() => setDocIndex((index) => index + 1)}
                   disabled={docIndex === docs.length - 1}
-                  className="p-1 rounded-md hover:bg-(--bg-tertiary) text-(--text-secondary) disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  title="Next document"
+                  className="p-1.5 disabled:opacity-30"
+                  aria-label="Next document"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
-              </div>
+              </>
             )}
-
-            {/* Tabs */}
-            {previewUrl && (
-              <div className="flex rounded-lg bg-(--bg-tertiary) p-0.5 border border-(--border-subtle)">
-                <button
-                  onClick={() => setActiveTabForCurrent('rendered')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                    activeTab === 'rendered'
-                      ? 'bg-(--bg-elevated) text-(--text-primary) shadow-sm'
-                      : 'text-(--text-tertiary) hover:text-(--text-secondary)'
-                  }`}
-                  aria-pressed={activeTab === 'rendered'}
-                >
-                  <Eye className="w-3.5 h-3.5 inline mr-1" />
-                  Preview
-                </button>
-                <button
-                  onClick={() => setActiveTabForCurrent('pdf')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                    activeTab === 'pdf'
-                      ? 'bg-(--bg-elevated) text-(--text-primary) shadow-sm'
-                      : 'text-(--text-tertiary) hover:text-(--text-secondary)'
-                  }`}
-                  aria-pressed={activeTab === 'pdf'}
-                >
-                  <FilePdf className="w-3.5 h-3.5 inline mr-1" />
-                  PDF
-                </button>
-              </div>
-            )}
-
-            {/* Split view toggle (when 2 docs) */}
             {docs.length === 2 && (
               <button
-                onClick={() => setShowSplit(true)}
-                className="px-2.5 py-1 text-xs font-medium rounded-lg bg-(--bg-tertiary) hover:bg-(--bg-hover) text-(--text-secondary) transition-colors"
-                title="View side-by-side"
+                onClick={() => setShowSplit((split) => !split)}
+                className="px-2 py-1 text-xs rounded-lg bg-(--bg-tertiary) hover:bg-(--bg-hover) text-(--text-secondary)"
               >
-                Split
+                {showSplit ? 'Single View' : 'Split'}
               </button>
             )}
-
-            {currentDoc?.filename && (
-              <button
-                onClick={handleDownload}
-                className="p-2 rounded-lg hover:bg-(--bg-tertiary) text-(--text-secondary) transition-colors"
-                title="Download PDF"
-                aria-label="Download PDF"
-              >
-                <Download className="w-5 h-5" />
-              </button>
-            )}
-
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-(--bg-tertiary) text-(--text-tertiary) transition-colors"
+              className="p-2 rounded-lg hover:bg-(--bg-tertiary) text-(--text-secondary)"
               aria-label="Close preview"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
-
-        {/* ── Body ───────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-hidden">
-          {activeTab === 'pdf' && previewUrl && !pdfError ? (
-            <embed
-              src={previewUrl}
-              type="application/pdf"
-              className="w-full h-full"
-              onError={() => setPdfErrors((p) => ({ ...p, [docIndex]: true }))}
-              title={currentDoc?.title}
-            />
-          ) : activeTab === 'pdf' && (!previewUrl || pdfError) ? (
-            <div className="h-full overflow-y-auto p-6">
-              <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-start gap-2">
-                <Eye className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>
-                  PDF preview unavailable. Showing rendered markdown preview instead.
-                  {currentDoc?.filename && (
-                    <>
-                      {' '}
-                      <button onClick={handleDownload} className="underline hover:text-amber-200">
-                        Download PDF
-                      </button>{' '}
-                      to view the actual document.
-                    </>
-                  )}
-                </span>
-              </div>
-              <div
-                className="prose prose-sm max-w-none text-(--text-primary)
-                  prose-headings:text-(--text-primary)
-                  prose-headings:font-bold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base
-                  prose-p:text-(--text-secondary) prose-p:leading-relaxed
-                  prose-li:text-(--text-secondary)
-                  prose-code:text-(--accent) prose-code:bg-(--bg-tertiary) prose-code:px-1 prose-code:py-0.5 prose-code:rounded
-                  prose-a:text-(--accent) prose-a:underline
-                  prose-strong:text-(--text-primary)
-                  prose-hr:border-(--border-subtle)"
-                dangerouslySetInnerHTML={{ __html: renderedHtml }}
+        <div className="flex-1 flex flex-col sm:flex-row min-h-0 min-w-0">
+          {visibleDocs.map((doc) => (
+            <div
+              key={`${doc.type}-${doc.title}`}
+              className="flex-1 min-h-0 min-w-0 border-(--border-subtle) first:border-b sm:first:border-b-0 sm:first:border-r last:border-0"
+            >
+              <DocPane
+                doc={doc}
+                previewUrl={docUrl('preview', doc.filename)}
+                onDownload={() => handleDownload(doc)}
               />
             </div>
-          ) : (
-            <div className="h-full overflow-y-auto p-6">
-              <div
-                className="prose prose-sm max-w-none text-(--text-primary)
-                  prose-headings:text-(--text-primary)
-                  prose-headings:font-bold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base
-                  prose-p:text-(--text-secondary) prose-p:leading-relaxed
-                  prose-li:text-(--text-secondary)
-                  prose-code:text-(--accent) prose-code:bg-(--bg-tertiary) prose-code:px-1 prose-code:py-0.5 prose-code:rounded
-                  prose-a:text-(--accent) prose-a:underline
-                  prose-strong:text-(--text-primary)
-                  prose-hr:border-(--border-subtle)"
-                dangerouslySetInnerHTML={{ __html: renderedHtml }}
-              />
-            </div>
-          )}
+          ))}
         </div>
       </div>
     </div>
