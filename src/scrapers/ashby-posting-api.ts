@@ -5,9 +5,9 @@ const PostingSchema = z.object({
   title: z.string().min(1),
   jobUrl: z.string().url(),
   descriptionPlain: z.string().min(1),
-  location: z.string().optional(),
-  employmentType: z.string().optional(),
-  isRemote: z.boolean().optional(),
+  location: z.string().nullish(),
+  employmentType: z.string().nullish(),
+  isRemote: z.boolean().nullish(),
 });
 
 /** Read an Ashby posting without launching a second browser.
@@ -44,9 +44,9 @@ export async function loadAshbyPosting(
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' '),
     description: posting.descriptionPlain,
-    location: posting.location,
-    remote: posting.isRemote,
-    job_type: posting.employmentType,
+    location: posting.location ?? undefined,
+    remote: posting.isRemote ?? undefined,
+    job_type: posting.employmentType ?? undefined,
     requirements: [],
     qualifications: [],
     form_fields: [],

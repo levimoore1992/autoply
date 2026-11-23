@@ -12,6 +12,9 @@ describe('Ashby posting API', () => {
             title: 'Other',
             jobUrl: 'https://jobs.ashbyhq.com/example/other',
             descriptionPlain: 'Other job',
+            isRemote: null,
+            location: null,
+            employmentType: null,
           },
           {
             title: 'Engineer',
