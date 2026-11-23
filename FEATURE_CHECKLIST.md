@@ -14,3 +14,9 @@ Verification:
 New tailored resumes capture their source resume at generation. Older drafts use the current profile's base resume with an explicit fallback label. The comparison shows text changes, including Markdown formatting, rather than PDF layout changes.
 
 Each feature is committed separately. Existing local engine/setup changes are outside these commits.
+
+## Application flow follow-up
+
+- [x] Generate Ashby resumes through its public posting API, without requiring another installed browser.
+- [ ] Draft custom application answers and fill supported choice controls through Autoply.
+- [ ] Run the complete app-driven form fill, attach its unchanged resume, and open Changes for review without submitting.

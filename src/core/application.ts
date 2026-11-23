@@ -41,6 +41,7 @@ import type {
 
 import { parseJobUrl } from '../utils/url-parser';
 import { scrapeJob } from '../scrapers';
+import { loadAshbyPosting } from '../scrapers/ashby-posting-api';
 import { createAIProvider } from '../ai/provider';
 import { join } from 'path';
 import { mkdir } from 'fs/promises';
@@ -242,7 +243,9 @@ export class ApplicationOrchestrator {
 
     let jobData: JobData;
     try {
-      jobData = await scrapeJob(url, parsedUrl.platform);
+      jobData = parsedUrl.platform === 'ashby'
+        ? await loadAshbyPosting(url)
+        : await scrapeJob(url, parsedUrl.platform);
       spinner.succeed(`Scraped: ${jobData.title} at ${jobData.company}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
