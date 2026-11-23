@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Profile, AppConfig, Application } from '../../types';
 import { getApiUrl, getAuthHeaders, apiFetchJson } from '../utils/api-config';
 
@@ -71,9 +73,19 @@ export function useConfig() {
 
 /** Fetch applications (sorted newest-first) */
 export function useApplications() {
+  const client = useQueryClient();
+  useEffect(() => {
+    const listener = (message: { type?: string }) => {
+      if (message.type === 'APPLICATION_SUBMITTED')
+        void client.invalidateQueries({ queryKey: queryKeys.applications });
+    };
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
+  }, [client]);
   return useQuery({
     queryKey: queryKeys.applications,
     queryFn: async (): Promise<Application[]> => {
+      await chrome.runtime.sendMessage({ type: 'SYNC_SUBMISSIONS' }).catch(() => {});
       // Background cleanup
       fetch(await getApiUrl('/applications/cleanup'), {
         method: 'POST',

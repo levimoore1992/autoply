@@ -27,6 +27,15 @@ describe('application source resume persistence', () => {
         assert.equal(applicationRepository.findById(draft.id).source_resume, 'Original');
         assert.equal(applicationRepository.findById(draft.id).status, 'filled');
         assert.equal(profileRepository.findById(profile.id).base_resume, 'Updated later');
+        const { recordConfirmedSubmission } = await import(${JSON.stringify(resolve('src/core/submissions.ts'))});
+        const tracked = applicationRepository.create({ profile_id: profile.id, url: 'https://jobs.ashbyhq.com/example/job', platform: 'ashby', company: 'Example', job_title: 'Engineer', status: 'review_required' });
+        const confirmed = recordConfirmedSubmission(tracked.url + '/application', 'Your application was successfully submitted');
+        assert.equal(confirmed.status, 'submitted');
+        assert.ok(confirmed.applied_at);
+        assert.equal(recordConfirmedSubmission(tracked.url, 'Your application was successfully submitted').applied_at, confirmed.applied_at);
+        assert.equal(recordConfirmedSubmission('https://jobs.ashbyhq.com/example/other', 'Your application was submitted'), null);
+        assert.equal(applicationRepository.findById(draft.id).status, 'filled');
+        assert.throws(() => recordConfirmedSubmission(tracked.url, 'Submit Application'));
         closeDb();
       `;
       const process = Bun.spawn([Bun.argv[0], '-e', script], {

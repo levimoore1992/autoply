@@ -23,3 +23,12 @@ Each feature is committed separately. Existing local engine/setup changes are ou
 - [x] Run the complete app-driven form fill, attach its unchanged resume, and open Changes for review without submitting.
 
 Follow-up verification: Chrome showed a five-field fill report; name, email, sponsorship No, the app-generated interest response, and the required resume attachment were present. The app-generated resume was left unchanged and its Changes view was opened. No submission occurred. Automated checks: 213 passed, 14 skipped; typecheck, focused lint, and extension build passed.
+
+## Automatic submission tracking
+
+- [x] Detect explicit success screens on supported Ashby, Lever, and Greenhouse job pages.
+- [x] Match the tracked job and set Submitted with a timestamp, without submitting the form.
+- [x] Persist offline confirmations and retry; deduplicate repeated confirmation screens.
+- [x] Refresh the side panel after sync and pick up confirmations already open during extension reload.
+
+Verified against the real Rescale success screen: only the Agentic AI Systems application became submitted; the other four remained in review. Automated checks: 216 passed, 14 skipped; typecheck, focused lint, and extension build passed. Generic thank-you messages, submit button clicks, and validation errors are not sufficient evidence. Redirects to generic pages that lose the job identity are left unmarked.

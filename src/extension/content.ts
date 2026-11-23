@@ -2,6 +2,59 @@
 // Works entirely client-side using Chrome's autocomplete attribute + semantic matching
 // No AI needed for basic form filling - this is how simplify.jobs works
 import { resumeInputPriority } from './utils/resume-input';
+import { applicationIdentity, isSubmissionConfirmation } from '../utils/submission-confirmation';
+
+// Observe SPA confirmation screens as well as confirmations present at page load.
+if (window.top === window && applicationIdentity(location.href)) {
+  let reported = false;
+  let checking = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const checkSubmission = async () => {
+    if (reported || checking) return;
+    const hasSubmit = Array.from(document.querySelectorAll('button, input[type="submit"]')).some(
+      (el) =>
+        isVisible(el) &&
+        /submit application|apply now/i.test(el.textContent || (el as HTMLInputElement).value || '')
+    );
+    if (hasSubmit) return;
+    const confirmation = Array.from(
+      document.querySelectorAll('[role="status"], [role="alert"], h1, h2, h3')
+    )
+      .filter(isVisible)
+      .map(
+        (el) =>
+          (el.matches('h1,h2,h3') ? el.parentElement?.innerText : (el as HTMLElement).innerText) ||
+          ''
+      )
+      .find((text) => text.length <= 1000 && isSubmissionConfirmation(text));
+    if (!confirmation) return;
+    checking = true;
+    try {
+      const result = await chrome.runtime.sendMessage({
+        type: 'SUBMISSION_CONFIRMED',
+        url: location.href,
+        confirmation,
+      });
+      reported = result?.success === true;
+    } catch {
+      /* An extension reload or unavailable worker can be retried. */
+    } finally {
+      checking = false;
+    }
+  };
+  const observer = new MutationObserver(() => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      void checkSubmission();
+    }, 500);
+  });
+  observer.observe(document.documentElement, {
+    childList: true,
+    characterData: true,
+    subtree: true,
+  });
+  void checkSubmission();
+}
 
 const DEBUG = false;
 function debugLog(...args: unknown[]) {
