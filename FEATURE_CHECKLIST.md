@@ -32,3 +32,12 @@ Follow-up verification: Chrome showed a five-field fill report; name, email, spo
 - [x] Refresh the side panel after sync and pick up confirmations already open during extension reload.
 
 Verified against the real Rescale success screen: only the Agentic AI Systems application became submitted; the other four remained in review. Automated checks: 216 passed, 14 skipped; typecheck, focused lint, and extension build passed. Generic thank-you messages, submit button clicks, and validation errors are not sufficient evidence. Redirects to generic pages that lose the job identity are left unmarked.
+
+## Resume Qualifications section
+
+- [x] Extract role-specific requirements and keywords from the full listing, including unstructured descriptions.
+- [x] Match requirements to saved resume/profile evidence; validate source references and exclude unknown references and duplicate keywords.
+- [x] Insert a single Qualifications section before Experience in all generated resumes.
+- [x] Verify a real Rescale Backend Engineer example and visually inspect both PDF pages.
+
+Verification: 220 tests passed, 14 skipped; typecheck, focused lint, and extension build passed. Existing resumes acquire the section when regenerated. The submitted application was not changed.

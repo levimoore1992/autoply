@@ -1,5 +1,6 @@
 import type { AIProvider } from '../types';
 import type { Profile, JobData } from '../types';
+import { generateQualifications, insertQualifications } from './qualifications';
 
 const RESUME_SYSTEM_PROMPT = `You create clean, ATS-friendly resumes that position candidates strongly for specific roles.
 
@@ -22,8 +23,9 @@ const RESUME_SYSTEM_PROMPT = `You create clean, ATS-friendly resumes that positi
 ## Section Order
 1. Name & Contact (one line: email | phone | location | linkedin)
 2. Skills (one line of comma-separated skills tailored to job requirements)
-3. Experience (most relevant first)
-4. Education (brief - just degree, school, year)
+3. Qualifications (inserted by the application from a separate requirement-to-profile matching step; do not write this section yourself)
+4. Experience (most relevant first)
+5. Education (brief - just degree, school, year)
 
 ## Job Title Optimization
 Rewrite job titles to better match the target role while staying truthful to the actual work:
@@ -57,7 +59,9 @@ export async function tailorResume(
   jobData: JobData
 ): Promise<string> {
   const prompt = buildResumePrompt(profile, jobData);
-  return provider.generateText(prompt, RESUME_SYSTEM_PROMPT);
+  const qualifications = await generateQualifications(provider, profile, jobData);
+  const resume = await provider.generateText(prompt, RESUME_SYSTEM_PROMPT);
+  return insertQualifications(resume, qualifications);
 }
 
 function buildResumePrompt(profile: Profile, jobData: JobData): string {
