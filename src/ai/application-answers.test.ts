@@ -17,6 +17,39 @@ const provider = (generateText: AIProvider['generateText']): AIProvider => ({
 });
 
 describe('application answer drafting', () => {
+  test('does not infer unrelated, foreign or negated eligibility from citizenship', async () => {
+    const fields = [
+      'Are you eligible for security clearance?',
+      'Are you authorized to work in Canada?',
+      'Are you not authorized to work in the United States?',
+    ].map((label, i) => ({ key: String(i), type: 'radio', label, options: ['Yes', 'No'] }));
+    expect(
+      await draftApplicationAnswers(
+        provider(async () => {
+          throw new Error('Unexpected AI request');
+        }),
+        profile,
+        fields
+      )
+    ).toEqual({});
+  });
+  test('does not reverse an authorization question that contains the word sponsorship', async () => {
+    const result = await draftApplicationAnswers(
+      provider(async () => {
+        throw new Error('No AI call expected');
+      }),
+      profile,
+      [
+        {
+          key: 'authorized',
+          type: 'radio',
+          label: 'Are you authorized to work in the United States without sponsorship now?',
+          options: ['Yes', 'No'],
+        },
+      ]
+    );
+    expect(result).toEqual({ authorized: 'Yes' });
+  });
   test('answers sponsorship only from explicit resume evidence', async () => {
     expect(getExplicitSponsorshipAnswer(profile)).toBe('No');
     expect(

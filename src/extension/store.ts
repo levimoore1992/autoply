@@ -23,6 +23,10 @@ type ActiveTab =
 export interface FillReport {
   filled: Array<{ key: string; value: string; label?: string }>;
   skipped: number;
+  missing?: import('../types/answer-memory').MissingApplicationField[];
+  enteredAnswers?: import('../types/answer-memory').MissingApplicationField[];
+  tabId?: number;
+  url?: string;
 }
 
 export interface ChatMessage {

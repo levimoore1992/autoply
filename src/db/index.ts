@@ -1,4 +1,5 @@
 import { Database } from 'bun:sqlite';
+import { migrateSavedAnswerHashes } from './saved-answer-migration';
 import { homedir } from 'os';
 import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
@@ -192,6 +193,15 @@ function runMigrations(database: Database): void {
       }
     },
   });
+
+  migrations.push({
+    name: '009_saved_answer_scope',
+    run: (currentDatabase) => {
+      if (!hasColumn('saved_answers', 'scope')) currentDatabase.exec("ALTER TABLE saved_answers ADD COLUMN scope TEXT NOT NULL DEFAULT ''");
+    },
+  });
+
+  migrations.push({ name: '010_rekey_saved_answers', run: migrateSavedAnswerHashes });
 
   const appliedMigrations = database
     .query<{ name: string }, []>('SELECT name FROM migrations')
