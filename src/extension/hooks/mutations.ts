@@ -221,7 +221,7 @@ export function useMapFields() {
     mutationFn: async ({
       fields,
       url,
-    }: MapFieldsData): Promise<{ fillPlan: Record<string, string> }> => {
+    }: MapFieldsData): Promise<{ fillPlan: Record<string, string>; savedKeys?: string[] }> => {
       return apiFetchJson('/profile/map-fields', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

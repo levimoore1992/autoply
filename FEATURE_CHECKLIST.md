@@ -41,3 +41,16 @@ Verified against the real Rescale success screen: only the Agentic AI Systems ap
 - [x] Verify a real Rescale Backend Engineer example and visually inspect both PDF pages.
 
 Verification: 220 tests passed, 14 skipped; typecheck, focused lint, and extension build passed. Existing resumes acquire the section when regenerated. The submitted application was not changed.
+
+## Missing field prompts and answer memory
+
+- [x] Inspect actual unanswered controls after filling and show named required/optional fields, including when no fields were filled.
+- [x] Add explicit Save & fill controls with matching-question or job-only reuse scope.
+- [x] Store responses locally per profile and reuse exact normalized questions before AI/default mappings.
+- [x] Validate available choices, preserve existing answers, and protect against filling a different page/question after navigation.
+- [x] Verify database restart persistence, profile/job isolation, changed option sets, and the save-to-reuse API round trip.
+- [x] Verify the UpDoc side panel displays its two currently unanswered questions without clearing or submitting the form.
+
+Tests: 227 passed, 14 skipped. Typecheck, focused lint, and extension build passed. Unknown personal responses are left for the user; secrets, files, and binding consent are completed on the application page rather than remembered.
+
+Review fixes: restrict citizenship-based mapping to explicit US work authorization, transactionally migrate legacy saved-answer hashes while retaining the latest response, and distinguish explicitly saved checkbox No from an unanswered checkbox. Regression tests cover each finding.

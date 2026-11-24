@@ -35,7 +35,18 @@ export async function draftApplicationAnswers(
   const questions: DetectedApplicationField[] = [];
   for (const field of fields) {
     if (field.currentValue?.trim() || PRIVATE_QUESTIONS.test(field.label)) continue;
-    if (/sponsor/i.test(field.label)) {
+    if (/\b(?:authorized|eligible)\b|right to work/i.test(field.label)) {
+      if (
+        /(?:authorized|eligible) to work|right to work/i.test(field.label) &&
+        /united states|\bu\.?s\.?a?\b/i.test(field.label) &&
+        !/\bnot\b|ineligible|unauthorized/i.test(field.label) &&
+        /work authorization\s*:\s*(?:USC\b|U\.?S\.? citizen\b|United States citizen\b)/i.test(
+          profile.base_resume || ''
+        ) &&
+        (!field.options || field.options.includes('Yes'))
+      )
+        answers[field.key] = 'Yes';
+    } else if (/sponsor/i.test(field.label)) {
       const answer = getExplicitSponsorshipAnswer(profile);
       if (answer && (!field.options || field.options.includes(answer))) answers[field.key] = answer;
     } else if (

@@ -8,6 +8,9 @@ import {
   draftApplicationAnswers,
 } from '../../ai/application-answers';
 import { loadAshbyPosting } from '../../scrapers/ashby-posting-api';
+import { answerJobScope, rememberedAnswers } from '../../core/answer-memory';
+import { savedAnswersRepository } from '../../db/repositories/saved-answers';
+import { canRememberField } from '../../utils/answer-memory';
 
 const ProfileBodySchema = z.object({
   id: z.number().optional(),
@@ -27,6 +30,30 @@ const ProfileBodySchema = z.object({
 });
 
 export function registerProfileRoutes(app: FastifyInstance): void {
+  app.post('/profile/answers', async (request, reply) => {
+    const parsed = z
+      .object({
+        field: DetectedApplicationFieldSchema.extend({ label: z.string().trim().min(1).max(2000) }),
+        answer: z.string().trim().min(1).max(20_000),
+        scope: z.enum(['all', 'job']),
+        url: z.string().url(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success)
+      return reply.status(400).send({ error: 'A question, answer and scope are required' });
+    const profile = profileRepository.findFirst();
+    if (!profile?.id) return reply.status(400).send({ error: 'No profile found' });
+    const { field, answer, scope, url } = parsed.data;
+    if (!canRememberField(field.type, field.label))
+      return reply.status(400).send({ error: 'Complete this field on the application page' });
+    if (field.options?.length && !field.options.includes(answer))
+      return reply.status(400).send({ error: 'Choose one of the available options' });
+    const jobScope = answerJobScope(url);
+    if (scope === 'job' && !jobScope)
+      return reply.status(400).send({ error: 'A supported job URL is required for this scope' });
+    savedAnswersRepository.upsert(profile.id, field.label, answer, scope === 'job' ? jobScope : '');
+    return { success: true };
+  });
   // Get profile
   app.get('/profile', async () => {
     const profile = profileRepository.findFirst();
@@ -180,8 +207,11 @@ export function registerProfileRoutes(app: FastifyInstance): void {
     };
 
     const fillPlan: Record<string, string> = {};
+    const saved = rememberedAnswers(profile.id ?? 0, fields, url);
+    Object.assign(fillPlan, saved);
     for (const field of fields) {
-      if (field.currentValue?.trim() || /sponsor/i.test(field.label)) continue;
+      if (fillPlan[field.key] || field.currentValue?.trim() || /sponsor/i.test(field.label))
+        continue;
       const fieldKey = field.key || field.label;
       const normalized = fieldKey.toLowerCase().replace(/[^a-z0-9]/g, '');
       for (const [profileKey, profileValue] of Object.entries(profileData)) {
@@ -228,9 +258,10 @@ export function registerProfileRoutes(app: FastifyInstance): void {
       // Keep deterministic values usable if the AI provider is unavailable.
       return {
         fillPlan,
+        savedKeys: Object.keys(saved),
         warning: 'Some custom answers could not be drafted. Review unanswered fields.',
       };
     }
-    return { fillPlan };
+    return { fillPlan, savedKeys: Object.keys(saved) };
   });
 }

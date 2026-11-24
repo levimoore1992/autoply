@@ -1,7 +1,14 @@
 import React, { useMemo, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
-import { LayoutDashboard, MessageSquare, BarChart3, User, Settings as SettingsIcon, History } from 'lucide-react';
+import {
+  LayoutDashboard,
+  MessageSquare,
+  BarChart3,
+  User,
+  Settings as SettingsIcon,
+  History,
+} from 'lucide-react';
 import type { Profile } from '../types';
 
 // Zustand
@@ -49,6 +56,8 @@ import { ChatSection } from './components/ChatSection';
 
 // Constants
 import { NON_SCRIPTABLE_PROTOCOLS, UNSUPPORTED_HOSTNAMES } from './constants';
+import { apiFetchJson } from './utils/api-config';
+import type { MissingApplicationField } from '../types/answer-memory';
 import { getApplicationPreviewDocs } from './utils/document-previews';
 import { documentJobKey } from './utils/job-tabs';
 
@@ -241,42 +250,45 @@ const AppContent = () => {
 
   // ── Chat handler ────────────────────────────────────────────────────
 
-  const handleSendChat = useCallback(async (content: string) => {
-    const userMsg = {
-      id: `user-${Date.now()}`,
-      role: 'user' as const,
-      content,
-      timestamp: Date.now(),
-    };
-    addChatMessage(userMsg);
-    setIsChatLoading(true);
+  const handleSendChat = useCallback(
+    async (content: string) => {
+      const userMsg = {
+        id: `user-${Date.now()}`,
+        role: 'user' as const,
+        content,
+        timestamp: Date.now(),
+      };
+      addChatMessage(userMsg);
+      setIsChatLoading(true);
 
-    try {
-      const allMessages = [
-        ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
-        { role: 'user' as const, content },
-      ];
-      const reply = await chatMutation.mutateAsync({
-        messages: allMessages,
-        url: currentTabUrl,
-      });
-      addChatMessage({
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: reply,
-        timestamp: Date.now(),
-      });
-    } catch (err) {
-      addChatMessage({
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: `Sorry, I encountered an error: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again.`,
-        timestamp: Date.now(),
-      });
-    } finally {
-      setIsChatLoading(false);
-    }
-  }, [chatMessages, addChatMessage, setIsChatLoading, chatMutation, currentTabUrl]);
+      try {
+        const allMessages = [
+          ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
+          { role: 'user' as const, content },
+        ];
+        const reply = await chatMutation.mutateAsync({
+          messages: allMessages,
+          url: currentTabUrl,
+        });
+        addChatMessage({
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: reply,
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        addChatMessage({
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: `Sorry, I encountered an error: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again.`,
+          timestamp: Date.now(),
+        });
+      } finally {
+        setIsChatLoading(false);
+      }
+    },
+    [chatMessages, addChatMessage, setIsChatLoading, chatMutation, currentTabUrl]
+  );
 
   // ── Event handlers ──────────────────────────────────────────────────
 
@@ -299,7 +311,9 @@ const AppContent = () => {
       toast.success('Documents generated successfully');
       return result;
     } catch (err) {
-      toast.error((err instanceof Error ? err.message : String(err)) || 'Failed to generate documents');
+      toast.error(
+        (err instanceof Error ? err.message : String(err)) || 'Failed to generate documents'
+      );
     }
   };
 
@@ -352,7 +366,9 @@ const AppContent = () => {
         setShowProfileForm(false);
         toast.info('Review the extracted data before saving');
       } catch (err) {
-        toast.error((err instanceof Error ? err.message : String(err)) || 'Failed to import profile');
+        toast.error(
+          (err instanceof Error ? err.message : String(err)) || 'Failed to import profile'
+        );
       }
     };
     input.click();
@@ -406,7 +422,11 @@ const AppContent = () => {
 
   // ── Autofill logic ──────────────────────────────────────────────────
 
-  const sendMessageToTab = async (tabId: number, message: Record<string, unknown>, tabUrl?: string) => {
+  const sendMessageToTab = async (
+    tabId: number,
+    message: Record<string, unknown>,
+    tabUrl?: string
+  ) => {
     try {
       return await chrome.tabs.sendMessage(tabId, message);
     } catch (err) {
@@ -421,13 +441,7 @@ const AppContent = () => {
         }
 
         try {
-          // Inject into main frame
-          await chrome.scripting.executeScript({
-            target: { tabId },
-            files: ['content.js'],
-          });
-
-          // Also inject into all frames (handles Ashby and other iframe-based forms)
+          // Inject once per frame, including the main frame.
           await chrome.scripting.executeScript({
             target: { tabId, allFrames: true },
             files: ['content.js'],
@@ -437,10 +451,7 @@ const AppContent = () => {
           return await chrome.tabs.sendMessage(tabId, message);
         } catch (injectionError) {
           const error = injectionError as Record<string, unknown>;
-          const msg =
-            typeof error.message === 'string'
-              ? error.message
-              : 'Unknown injection error';
+          const msg = typeof error.message === 'string' ? error.message : 'Unknown injection error';
           throw new Error(`Could not attach to the page. Reload and try again. (${msg})`);
         }
       }
@@ -475,8 +486,14 @@ const AppContent = () => {
 
       // Kick off resume download in parallel with form field detection
       const latestDocs = generateDocsMutation.data;
-      const generatedDocs = latestDocs && tab.url && documentJobKey(latestDocs.jobUrl) === documentJobKey(tab.url) ? latestDocs : null;
-      if (latestDocs?.resume && !generatedDocs) toast.warning('The generated resume belongs to a different job. Generate a resume for this job before attaching it.');
+      const generatedDocs =
+        latestDocs && tab.url && documentJobKey(latestDocs.jobUrl) === documentJobKey(tab.url)
+          ? latestDocs
+          : null;
+      if (latestDocs?.resume && !generatedDocs)
+        toast.warning(
+          'The generated resume belongs to a different job. Generate a resume for this job before attaching it.'
+        );
       const resumePromise: Promise<{ base64: string; filename: string } | null> =
         generatedDocs?.resume
           ? downloadDocumentMutation
@@ -498,6 +515,7 @@ const AppContent = () => {
 
       // Detect form fields (runs in parallel with resume download above)
       let fillPlan: Record<string, string> = {};
+      let savedKeys: string[] = [];
       let formFields: import('../ai/application-answers').DetectedApplicationField[] = [];
       try {
         const detectedFields = await sendMessageToTab(tab.id, { type: 'GET_FORM_FIELDS' }, tab.url);
@@ -506,14 +524,15 @@ const AppContent = () => {
           // Build fillPlan locally — no server round-trip needed for standard fields
           fillPlan = buildFillPlanLocally(detectedFields.fields, profile);
 
-          // Only hit the server for fields we couldn't map locally
-          const unmapped = detectedFields.fields.filter(
-            (f: { key: string; type: string; label: string }) => !fillPlan[f.key || f.label]
-          );
-          if (unmapped.length > 0) {
+          // Saved responses take precedence over automatic mapping for unanswered fields.
+          if (formFields.length > 0) {
             try {
-              const result = await mapFieldsMutation.mutateAsync({ fields: unmapped, url: tab.url });
+              const result = await mapFieldsMutation.mutateAsync({
+                fields: formFields,
+                url: tab.url,
+              });
               Object.assign(fillPlan, result.fillPlan || {});
+              savedKeys = result.savedKeys || [];
             } catch {
               // server mapping is best-effort
             }
@@ -539,6 +558,7 @@ const AppContent = () => {
       // Send profile to content script
       const profilePayload = {
         type: 'AUTOFILL_WITH_PROFILE',
+        savedKeys,
         fillPlan,
         documents: resumeBase64 ? { resume: resumeBase64, resumeFilename } : undefined,
         profile: buildProfilePayload(profile),
@@ -570,12 +590,35 @@ const AppContent = () => {
         // webNavigation may not be available
       }
 
+      const after = await sendMessageToTab(tab.id, { type: 'GET_FORM_FIELDS' }, tab.url);
+      const missing: MissingApplicationField[] = (after?.fields || []).filter(
+        (field: MissingApplicationField) => field.label && !field.currentValue?.trim()
+      );
+      const profileKeyToValue = buildProfileKeyToValue(profile);
+      setFillReport({
+        filled: filledArr.map((key) => ({
+          key,
+          label: formFields.find((field) => field.key === key)?.label,
+          value: fillPlan[key] ?? profileKeyToValue[key] ?? '',
+        })),
+        enteredAnswers: (after?.fields || []).filter(
+          (field: MissingApplicationField) =>
+            field.rememberable &&
+            field.currentValue?.trim() &&
+            !/^(?:name|full name|first name|last name|email|phone|location|linkedin|github|portfolio)\s*\*?$/i.test(
+              field.label
+            )
+        ),
+        skipped: missing.length,
+        missing,
+        tabId: tab.id,
+        url: tab.url,
+      });
+      if (missing.length)
+        toast.warning(
+          `${missing.length} unanswered fields need your review. Save answers in the Fill Report to reuse them.`
+        );
       if (filledArr.length > 0 || fillResult?.success) {
-        const profileKeyToValue = buildProfileKeyToValue(profile);
-        setFillReport({
-          filled: filledArr.map((key) => ({ key, label: formFields.find((field) => field.key === key)?.label, value: fillPlan[key] ?? profileKeyToValue[key] ?? '' })),
-          skipped: Math.max(0, formFields.length - filledArr.length),
-        });
         toast.success(
           `${filledArr.length} field${filledArr.length !== 1 ? 's' : ''} filled successfully`
         );
@@ -606,6 +649,56 @@ const AppContent = () => {
     } catch {
       return false;
     }
+  };
+
+  const handleSaveAnswer = async (
+    field: MissingApplicationField,
+    answer: string,
+    scope: 'all' | 'job'
+  ) => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!fillReport?.url || tab.id !== fillReport.tabId || tab.url !== fillReport.url)
+      throw new Error('Return to the application that produced this report before saving.');
+    await apiFetchJson('/profile/answers', {
+      method: 'POST',
+      body: JSON.stringify({ field, answer, scope, url: fillReport.url }),
+    });
+    const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (active?.id !== tab.id || active.url !== fillReport.url)
+      throw new Error('Answer saved. Return to the original application to fill it.');
+    const result = await sendMessageToTab(
+      tab.id as number,
+      {
+        type: 'REFILL_FIELD',
+        fieldKey: field.key,
+        fieldLabel: field.label,
+        expectedUrl: fillReport.url,
+        value: answer,
+        remembered: true,
+      },
+      tab.url
+    );
+    const after = await sendMessageToTab(tab.id as number, { type: 'GET_FORM_FIELDS' }, tab.url);
+    const actual = after.fields?.find(
+      (item: MissingApplicationField) => item.key === field.key
+    )?.currentValue;
+    if (!result?.success || !actual?.trim())
+      throw new Error(
+        'Answer saved, but this control could not be filled. Complete it on the application page.'
+      );
+    const latest = useAppStore.getState().fillReport;
+    if (latest?.url === fillReport.url)
+      setFillReport({
+        ...latest,
+        filled: [
+          ...latest.filled.filter((item) => item.key !== field.key),
+          { key: field.key, label: field.label, value: answer },
+        ],
+        missing: latest.missing?.filter((item) => item.key !== field.key),
+        enteredAnswers: latest.enteredAnswers?.filter((item) => item.key !== field.key),
+        skipped: Math.max(0, latest.missing?.filter((item) => item.key !== field.key).length ?? 0),
+      });
+    toast.success('Answer saved and filled');
   };
 
   // ── Loading state ───────────────────────────────────────────────────
@@ -650,6 +743,7 @@ const AppContent = () => {
                 report={fillReport}
                 onDismiss={() => setFillReport(null)}
                 onRefill={handleRefillField}
+                onSaveAnswer={handleSaveAnswer}
               />
             )}
 
@@ -735,7 +829,9 @@ const AppContent = () => {
 
             {/* Application History */}
             <div className="pt-2">
-              <h3 className="text-sm font-semibold text-(--text-primary) mb-3">Application History</h3>
+              <h3 className="text-sm font-semibold text-(--text-primary) mb-3">
+                Application History
+              </h3>
               <FilterTabs active={recentFilter} onChange={setRecentFilter} />
 
               <div className="mt-3">
@@ -793,8 +889,6 @@ const AppContent = () => {
             />
           </div>
         )}
-
-
 
         {activeTab === 'settings' && <SettingsSection config={config} onUpdate={updateAppConfig} />}
       </main>

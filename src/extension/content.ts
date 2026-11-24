@@ -1,6 +1,11 @@
 // Content script for Autoply Copilot
 // Works entirely client-side using Chrome's autocomplete attribute + semantic matching
 // No AI needed for basic form filling - this is how simplify.jobs works
+import {
+  canRememberField,
+  normalizeAnswerQuestion,
+  checkboxResponse,
+} from '../utils/answer-memory';
 import { resumeInputPriority } from './utils/resume-input';
 import { applicationIdentity, isSubmissionConfirmation } from '../utils/submission-confirmation';
 
@@ -56,6 +61,7 @@ if (window.top === window && applicationIdentity(location.href)) {
   void checkSubmission();
 }
 
+const checkboxAnswers = new WeakMap<HTMLInputElement, boolean>();
 const DEBUG = false;
 function debugLog(...args: unknown[]) {
   if (DEBUG) {
@@ -485,6 +491,7 @@ async function fillCheckbox(el: Element, value: string): Promise<boolean> {
   try {
     const checkbox = el as HTMLInputElement;
     const shouldCheck = ['yes', 'true', '1', 'y'].includes(value.toLowerCase());
+    checkboxAnswers.set(checkbox, shouldCheck);
 
     if (checkbox.checked !== shouldCheck) {
       checkbox.checked = shouldCheck;
@@ -719,7 +726,8 @@ function looksLikeLabel(key: string): boolean {
 
 async function fillByFillPlan(
   fillPlan: Record<string, string>,
-  _alreadyFilled: Set<string>
+  _alreadyFilled: Set<string>,
+  savedKeys: Set<string> = new Set()
 ): Promise<string[]> {
   const filled: string[] = [];
 
@@ -730,7 +738,7 @@ async function fillByFillPlan(
       `[data-autoply-choice-key="${CSS.escape(fieldKey)}"]`
     );
     if (choiceGroup) {
-      if (shouldSkipField(getFieldLabel(choiceGroup))) continue;
+      if (shouldSkipField(getFieldLabel(choiceGroup)) && !savedKeys.has(fieldKey)) continue;
       const button = choiceButtons(choiceGroup).find(
         (option) => choiceText(option).toLowerCase() === value.toLowerCase().trim()
       );
@@ -752,7 +760,7 @@ async function fillByFillPlan(
             .replace(/\s*\*$/, '')
             .toLowerCase() === fieldKey.replace(/\s*\*$/, '').toLowerCase()
       );
-      if (field && !shouldSkipField(getFieldLabel(field))) {
+      if (field && (!shouldSkipField(getFieldLabel(field)) || savedKeys.has(fieldKey))) {
         didFill =
           field.tagName === 'SELECT'
             ? await fillSelect(field, value)
@@ -773,17 +781,21 @@ async function fillByFillPlan(
         for (const el of elements) {
           if (!isFormElement(el) || !isVisible(el)) continue;
           const label = getFieldLabel(el);
-          if (shouldSkipField(label)) continue;
+          if (shouldSkipField(label) && !savedKeys.has(fieldKey)) continue;
 
           // Skip if element already has the correct value (idempotent check)
           const currentVal = (el as HTMLInputElement).value;
           if (currentVal && currentVal === value) {
-            didFill = false;
+            didFill = savedKeys.has(fieldKey);
             break;
           }
 
           const fieldType = (el as HTMLInputElement).type;
-          if (fieldType === 'select' || el.tagName === 'SELECT') {
+          if (
+            fieldType === 'select' ||
+            el.tagName === 'SELECT' ||
+            el.getAttribute('role') === 'combobox'
+          ) {
             didFill = await fillSelect(el, value);
           } else if (fieldType === 'radio') {
             didFill = await fillRadio(el, value);
@@ -808,7 +820,8 @@ async function fillByFillPlan(
 async function handleAutofillWithProfile(
   profile: Profile,
   _documents?: { resume?: string; coverLetter?: string; resumeFilename?: string },
-  fillPlan?: Record<string, string>
+  fillPlan?: Record<string, string>,
+  savedKeys: string[] = []
 ): Promise<{ success: boolean; filled: string[]; errors: string[] }> {
   debugLog('Autoply: Starting autofill with profile:', Object.keys(profile).join(', '));
 
@@ -817,7 +830,7 @@ async function handleAutofillWithProfile(
   // AI fallback: use fillPlan for any fields not matched by semantic pass
   if (fillPlan && Object.keys(fillPlan).length > 0) {
     const alreadyFilled = new Set(result.filled);
-    const planFilled = await fillByFillPlan(fillPlan, alreadyFilled);
+    const planFilled = await fillByFillPlan(fillPlan, alreadyFilled, new Set(savedKeys));
     if (planFilled.length > 0) {
       debugLog(
         `Autoply: fillPlan filled ${planFilled.length} additional fields:`,
@@ -863,13 +876,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'AUTOFILL_WITH_PROFILE') {
-    const { profile, documents, fillPlan } = message as {
+    const { profile, documents, fillPlan, savedKeys } = message as {
       profile: Profile;
       documents?: { resume?: string; coverLetter?: string };
       fillPlan?: Record<string, string>;
+      savedKeys?: string[];
     };
 
-    handleAutofillWithProfile(profile, documents, fillPlan).then((result) => {
+    handleAutofillWithProfile(profile, documents, fillPlan, savedKeys).then((result) => {
       debugLog(`Autoply: Frame ${frameId} fill result:`, result.filled.length, 'fields');
       sendResponse({ ...result, frameId });
     });
@@ -879,7 +893,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'REFILL_FIELD') {
     const { fieldKey, value } = message as { fieldKey: string; value: string };
-    fillByFillPlan({ [fieldKey]: value }, new Set()).then((filled) => {
+    if (message.expectedUrl && message.expectedUrl !== location.href) {
+      sendResponse({ success: false });
+      return false;
+    }
+    if (message.fieldLabel) {
+      const field = document.querySelector(
+        `[data-autoply-choice-key="${CSS.escape(fieldKey)}"], [data-autoply-field-key="${CSS.escape(fieldKey)}"]`
+      );
+      if (
+        !field ||
+        normalizeAnswerQuestion(getFieldLabel(field)) !==
+          normalizeAnswerQuestion(message.fieldLabel)
+      ) {
+        sendResponse({ success: false });
+        return false;
+      }
+    }
+    fillByFillPlan(
+      { [fieldKey]: value },
+      new Set(),
+      message.remembered ? new Set([fieldKey]) : new Set()
+    ).then((filled) => {
       sendResponse({ success: filled.length > 0 });
     });
     return true;
@@ -893,27 +928,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       options?: string[];
       currentValue?: string;
       autocomplete?: string;
+      required?: boolean;
+      rememberable?: boolean;
     }> = [];
 
     const inputs = Array.from(
-      document.querySelectorAll('input:not([type="hidden"]), select, textarea')
+      document.querySelectorAll('input:not([type="hidden"]), select, textarea, [role="combobox"]')
     );
     for (const input of inputs) {
       if (!isFormElement(input)) continue;
-      if (!isVisible(input)) continue;
-
       const el = input as HTMLInputElement;
+      const label = getFieldLabel(input);
+      const resumeFile =
+        el.type === 'file' &&
+        /resume|curriculum|\bcv\b/i.test(label + ' ' + el.name + ' ' + el.id) &&
+        !/autofill/i.test(label);
+      if (!isVisible(input) && !resumeFile) continue;
+      if (el.type === 'password') continue;
       const key = el.name || el.id || `autoply-field-${fields.length}`;
       el.setAttribute('data-autoply-field-key', key);
       fields.push({
         key,
         type: el.type || el.tagName.toLowerCase(),
-        label: getFieldLabel(input),
-        currentValue: el.type === 'file' ? undefined : el.value,
+        label,
+        required: el.required || el.getAttribute('aria-required') === 'true',
+        rememberable: canRememberField(el.type, label),
+        currentValue:
+          el.type === 'file'
+            ? el.files?.[0]?.name || ''
+            : el.type === 'checkbox'
+              ? checkboxResponse(el.checked, checkboxAnswers.get(el))
+              : el.type === 'radio'
+                ? el.checked
+                  ? el.value
+                  : ''
+                : el.value || el.getAttribute('aria-valuetext') || '',
         options:
-          el.tagName === 'SELECT'
-            ? Array.from((input as HTMLSelectElement).options).map((option) => option.text)
-            : undefined,
+          el.type === 'checkbox'
+            ? ['Yes', 'No']
+            : el.tagName === 'SELECT'
+              ? Array.from((input as HTMLSelectElement).options).map((option) => option.text)
+              : undefined,
         autocomplete: el.getAttribute('autocomplete') || undefined,
       });
     }
@@ -926,6 +981,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         key,
         type: 'radio',
         label: getFieldLabel(group),
+        required: Boolean(
+          group.querySelector('[required], [aria-required="true"], label[class*="required"]')
+        ),
+        rememberable: canRememberField('radio', getFieldLabel(group)),
         options: buttons.map(choiceText),
         currentValue: buttons.filter(choiceSelected).map(choiceText).join(', '),
       });

@@ -1,13 +1,8 @@
 import React, { useState } from 'react';
-import {
-  CheckCircle,
-  AlertCircle,
-  Loader2,
-  Edit3,
-  X,
-  ArrowRight,
-  Info,
-} from 'lucide-react';
+import type { FillReport } from '../store';
+import type { MissingApplicationField } from '../../types/answer-memory';
+import { MissingAnswerField } from './MissingAnswerField';
+import { CheckCircle, AlertCircle, Loader2, Edit3, X, ArrowRight, Info } from 'lucide-react';
 
 const FILL_DISPLAY_NAMES: Record<string, string> = {
   firstName: 'First name',
@@ -27,17 +22,23 @@ export const FillReportCard = ({
   report,
   onDismiss,
   onRefill,
+  onSaveAnswer,
 }: {
-  report: { filled: Array<{ key: string; value: string; label?: string }>; skipped: number };
+  report: FillReport;
   onDismiss: () => void;
   onRefill: (fieldKey: string, value: string) => Promise<boolean>;
+  onSaveAnswer: (
+    field: MissingApplicationField,
+    answer: string,
+    scope: 'all' | 'job'
+  ) => Promise<void>;
 }) => {
-
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [refillState, setRefillState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
-  if (report.filled.length === 0) return null;
+  if (report.filled.length === 0 && !report.missing?.length && !report.enteredAnswers?.length)
+    return null;
 
   const startEdit = (key: string, value: string) => {
     if (key === 'resume_upload') return;
@@ -118,7 +119,10 @@ export const FillReportCard = ({
         <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-4 space-y-3 animate-scale-in shadow-inner">
           <div className="flex items-center gap-2 text-xs text-blue-300/80">
             <Info className="w-3 h-3" />
-            <span>Correcting <span className="font-bold">{FILL_DISPLAY_NAMES[editingKey] || editingKey}</span></span>
+            <span>
+              Correcting{' '}
+              <span className="font-bold">{FILL_DISPLAY_NAMES[editingKey] || editingKey}</span>
+            </span>
           </div>
           <div className="relative">
             <input
@@ -184,7 +188,34 @@ export const FillReportCard = ({
         </div>
       )}
 
-      {report.skipped > 0 && (
+      {Boolean(report.missing?.length) && (
+        <section aria-label="Unanswered application fields" className="space-y-3">
+          <h3 className="text-sm font-semibold text-amber-300">
+            {report.missing?.length} unanswered fields
+          </h3>
+          <p className="text-xs text-(--text-secondary)">
+            Save a response to fill it now and reuse it when the same question appears. Answers are
+            stored in your local profile.
+          </p>
+          {report.missing?.map((field) => (
+            <MissingAnswerField key={field.key} field={field} onSave={onSaveAnswer} />
+          ))}
+        </section>
+      )}
+      {Boolean(report.enteredAnswers?.length) && (
+        <details className="space-y-3 text-xs">
+          <summary className="cursor-pointer text-(--text-secondary)">
+            Remember answers already entered ({report.enteredAnswers?.length})
+          </summary>
+          <p className="text-(--text-secondary)">
+            Review these existing responses before saving them for reuse.
+          </p>
+          {report.enteredAnswers?.map((field) => (
+            <MissingAnswerField key={field.key} field={field} onSave={onSaveAnswer} />
+          ))}
+        </details>
+      )}
+      {report.skipped > 0 && !report.missing?.length && (
         <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/10 text-amber-400/80">
           <AlertCircle className="w-3 h-3 flex-shrink-0" />
           <p className="text-[10px] font-medium italic">
