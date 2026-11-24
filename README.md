@@ -177,10 +177,19 @@ Note: Firefox temporary add-ons are removed when you close Firefox. For permanen
 3. Click the Autoply extension icon
 
 4. The extension sidepanel features:
+   - **Find remote jobs**: Search the free Jobicy feed by job title, then select listings to add to your review queue.
    - **Autofill**: Detects form fields on the page, maps your profile data, and fills fields automatically.
    - **AI Chat Assistant**: Ask career questions, get interview prep, or draft responses using context from your profile, resume, GitHub, LinkedIn, and portfolio links.
    - **Document Generation**: Tailor resumes and cover letters for the current job page.
    - **Application Stats**: Track submitted, pending, and filled application history and metrics.
+
+### Find remote jobs
+
+On the extension dashboard, enter a title such as `software engineer` or `backend developer`, then click **Find jobs**. The default location filter includes listings marked as US eligible or worldwide. You can also search all remote locations and check each listing's restrictions. All employment types are included, with no salary filter.
+
+Select listings and click **Add selected to review**. Existing tracked listing URLs are excluded, and adding the same listing again does not create a duplicate. Open a listing from the review queue, generate documents for it, then follow its employer application link before using **Fill Application**. Review documents and the completed form before submitting yourself.
+
+Discovery uses the latest 100 listings from the [Jobicy public API](https://github.com/Jobicy/remote-jobs-api), cached locally for one hour. Coverage is limited to that feed; this is not a search of every job site. Keywords match listing titles (including engineer/developer aliases), rather than an AI assessment of your qualifications. The feed receives no resume, API key, or search keywords. A failed refresh can show cached results with a warning. Selected listing descriptions stay in the local database for document generation. Links point to Jobicy listing pages; their employer application links may lead to a different site, so duplicate detection across those different URLs is not guaranteed.
 
 ### Configuration
 

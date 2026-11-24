@@ -1,3 +1,4 @@
+import { findPublicPosting } from '../db/repositories/job-posting';
 import type { JobData } from '../types';
 import { generateCoverLetter } from '../ai/cover-letter';
 import { tailorResume } from '../ai/resume';
@@ -243,9 +244,11 @@ export class ApplicationOrchestrator {
 
     let jobData: JobData;
     try {
-      jobData = parsedUrl.platform === 'ashby'
-        ? await loadAshbyPosting(url)
-        : await scrapeJob(url, parsedUrl.platform);
+      jobData = findPublicPosting(url) ?? (
+        parsedUrl.platform === 'ashby'
+          ? await loadAshbyPosting(url)
+          : await scrapeJob(url, parsedUrl.platform)
+      );
       spinner.succeed(`Scraped: ${jobData.title} at ${jobData.company}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

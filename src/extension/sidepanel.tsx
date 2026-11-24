@@ -1,3 +1,4 @@
+import { JobSearchSection } from './components/JobSearchSection';
 import React, { useMemo, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
@@ -729,6 +730,7 @@ const AppContent = () => {
       <main className="flex-1 overflow-y-auto px-4 py-4 pb-24 space-y-4">
         {activeTab === 'dashboard' && (
           <div className="space-y-4">
+            <JobSearchSection />
             <ActionCard
               onApply={handleAutofill}
               isApplying={isApplying}
