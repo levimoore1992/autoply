@@ -876,6 +876,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'AUTOFILL_WITH_PROFILE') {
+    if (message.expectedUrl && message.expectedUrl !== location.href) {
+      sendResponse({ success: false, error: 'The application page changed. Try again.' });
+      return false;
+    }
     const { profile, documents, fillPlan, savedKeys } = message as {
       profile: Profile;
       documents?: { resume?: string; coverLetter?: string };

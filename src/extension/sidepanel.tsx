@@ -293,7 +293,7 @@ const AppContent = () => {
 
   // ── Event handlers ──────────────────────────────────────────────────
 
-  const handleGenerateDocuments = async (type: 'resume' | 'cover-letter' | 'both') => {
+  const handleGenerateDocuments = async (type: 'resume' | 'cover-letter' | 'both', description?: string) => {
     if (!currentTabUrl) {
       toast.error('No active job URL detected');
       return;
@@ -308,6 +308,7 @@ const AppContent = () => {
       const result = await generateDocsMutation.mutateAsync({
         url: currentTabUrl,
         type,
+        pageSource: description ? { url: currentTabUrl, title: 'User supplied job description', text: description } : undefined,
       });
       toast.success('Documents generated successfully');
       return result;
@@ -461,7 +462,7 @@ const AppContent = () => {
   };
 
   const handleAutofill = async () => {
-    if (isApplying) return;
+    if (isApplying || isGeneratingDocs) return;
     setIsApplying(true);
 
     if (!connected) {
@@ -478,7 +479,7 @@ const AppContent = () => {
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab.id) throw new Error('No active tab found');
+      if (!tab.id || !tab.url) throw new Error('No active job tab found');
 
       const unsupportedTabMessage = getUnsupportedTabMessage(tab.url);
       if (unsupportedTabMessage) {
@@ -487,7 +488,7 @@ const AppContent = () => {
 
       // Kick off resume download in parallel with form field detection
       const latestDocs = generateDocsMutation.data;
-      const generatedDocs =
+      let generatedDocs =
         latestDocs && tab.url && documentJobKey(latestDocs.jobUrl) === documentJobKey(tab.url)
           ? latestDocs
           : null;
@@ -495,6 +496,14 @@ const AppContent = () => {
         toast.warning(
           'The generated resume belongs to a different job. Generate a resume for this job before attaching it.'
         );
+      if (!generatedDocs?.resume) {
+        toast.warning('Reading this job description and generating its resume before filling…');
+        generatedDocs = await generateDocsMutation.mutateAsync({ url: tab.url, type: 'resume' });
+      }
+      const current = await chrome.tabs.get(tab.id);
+      if (!current.url || documentJobKey(current.url) !== documentJobKey(tab.url)) {
+        throw new Error('The job changed during generation. Select the correct job tab before filling.');
+      }
       const resumePromise: Promise<{ base64: string; filename: string } | null> =
         generatedDocs?.resume
           ? downloadDocumentMutation
@@ -553,12 +562,15 @@ const AppContent = () => {
           resumeFilename = resumeResult.filename;
         }
       } catch {
-        // resume upload is optional
+        throw new Error('Could not download the generated resume. Retry before filling this application.');
       }
+      const fillTab = await chrome.tabs.get(tab.id);
+      if (fillTab.url !== tab.url) throw new Error('The job tab changed. Try again on the correct application.');
 
       // Send profile to content script
       const profilePayload = {
         type: 'AUTOFILL_WITH_PROFILE',
+        expectedUrl: tab.url,
         savedKeys,
         fillPlan,
         documents: resumeBase64 ? { resume: resumeBase64, resumeFilename } : undefined,
@@ -576,7 +588,7 @@ const AppContent = () => {
         for (const frame of frames || []) {
           if (frame.frameId !== 0) {
             try {
-              const frameRes = await chrome.tabs.sendMessage(tab.id, profilePayload, {
+              const frameRes = await chrome.tabs.sendMessage(tab.id, { ...profilePayload, expectedUrl: frame.url }, {
                 frameId: frame.frameId,
               });
               if (frameRes?.filled?.length) {
@@ -733,7 +745,7 @@ const AppContent = () => {
             <JobSearchSection />
             <ActionCard
               onApply={handleAutofill}
-              isApplying={isApplying}
+              isApplying={isApplying || isGeneratingDocs}
               connected={connected}
               error={isError ? 'Failed to load extension data' : null}
               onRetry={() => window.location.reload()}
@@ -752,8 +764,8 @@ const AppContent = () => {
             <GenerateDocumentsCard
               currentUrl={currentTabUrl}
               onGenerate={handleGenerateDocuments}
-              isGenerating={isGeneratingDocs}
-              generatedDocs={generateDocsMutation.data ?? null}
+              isGenerating={isGeneratingDocs || isApplying}
+              generatedDocs={generateDocsMutation.data && currentTabUrl && documentJobKey(generateDocsMutation.data.jobUrl) === documentJobKey(currentTabUrl) ? generateDocsMutation.data : null}
               connected={connected}
               onPreview={(type) => {
                 const data = generateDocsMutation.data;

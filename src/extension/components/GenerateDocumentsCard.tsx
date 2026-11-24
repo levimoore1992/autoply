@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FileText, Loader2, RefreshCcw, Eye, Download, LayoutTemplate } from 'lucide-react';
 import { NON_SCRIPTABLE_PROTOCOLS } from '../constants';
 import { getAuthedUrl } from '../utils/api-config';
@@ -13,12 +13,14 @@ export const GenerateDocumentsCard = ({
   onPreview,
 }: {
   currentUrl: string | undefined;
-  onGenerate: (type: 'resume' | 'cover-letter' | 'both') => void;
+  onGenerate: (type: 'resume' | 'cover-letter' | 'both', description?: string) => void;
   isGenerating: boolean;
   generatedDocs: GeneratedDocumentsResult | null;
   connected: boolean;
   onPreview: (type: 'resume' | 'cover-letter' | 'both') => void;
 }) => {
+  const [manualSource, setManualSource] = useState({ url: currentUrl, text: '' });
+  const description = manualSource.url === currentUrl ? manualSource.text : '';
   const isValidJobUrl =
     currentUrl && !NON_SCRIPTABLE_PROTOCOLS.some((p) => currentUrl.startsWith(p));
 
@@ -45,6 +47,19 @@ export const GenerateDocumentsCard = ({
           <p className="text-xs text-(--text-tertiary)">AI-tailored for this job</p>
         </div>
       </div>
+
+      <p className="text-xs text-(--text-secondary)">Reads the job description from this tab. Fill Application also generates a resume when this job has none. Review the result before submitting.</p>
+      <details className="text-xs text-(--text-secondary)">
+        <summary className="cursor-pointer">Application form only? Paste the full job description</summary>
+        <label className="block mt-2">
+          Job title, company, duties, and requirements
+          <textarea value={description} onChange={(event) => setManualSource({ url: currentUrl, text: event.target.value })}
+            maxLength={40000} rows={6} disabled={isGenerating}
+            className="mt-1 block w-full rounded-lg border border-(--border-default) bg-(--bg-primary) p-2 text-sm text-(--text-primary)"
+            placeholder="Paste the employer’s complete job description, including its title and company." />
+        </label>
+        <p className="mt-1">Use Generate below to tailor from this description. The job text is sent to your configured AI provider.</p>
+      </details>
 
       {generatedDocs && (hasResume || hasCoverLetter) ? (
         <div className="space-y-3">
@@ -170,7 +185,7 @@ export const GenerateDocumentsCard = ({
           )}
 
           <button
-            onClick={() => onGenerate('both')}
+            onClick={() => onGenerate('both', description.trim() || undefined)}
             disabled={isGenerating}
             className="btn btn-primary w-full"
           >
@@ -190,7 +205,7 @@ export const GenerateDocumentsCard = ({
       ) : (
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => onGenerate('resume')}
+            onClick={() => onGenerate('resume', description.trim() || undefined)}
             disabled={!connected || isGenerating}
             className="btn btn-secondary"
           >
@@ -202,7 +217,7 @@ export const GenerateDocumentsCard = ({
             Resume
           </button>
           <button
-            onClick={() => onGenerate('cover-letter')}
+            onClick={() => onGenerate('cover-letter', description.trim() || undefined)}
             disabled={!connected || isGenerating}
             className="btn btn-secondary"
           >

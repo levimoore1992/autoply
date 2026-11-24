@@ -180,8 +180,16 @@ Note: Firefox temporary add-ons are removed when you close Firefox. For permanen
    - **Find remote jobs**: Search the free Jobicy feed by job title, then select listings to add to your review queue.
    - **Autofill**: Detects form fields on the page, maps your profile data, and fills fields automatically.
    - **AI Chat Assistant**: Ask career questions, get interview prep, or draft responses using context from your profile, resume, GitHub, LinkedIn, and portfolio links.
-   - **Document Generation**: Tailor resumes and cover letters for the current job page.
+   - **Document Generation**: Read the job description from the active tab to tailor resumes and cover letters, including custom career sites. Fill Application generates a resume first when that job has none.
    - **Application Stats**: Track submitted, pending, and filled application history and metrics.
+
+### Generate a resume from any job page
+
+Open the full job listing, then click the Autoply toolbar icon to grant access to that tab. **Generate Documents** reads structured `JobPosting` data or visible job-description text from the page you already opened, so it does not require a separate Playwright browser. Accessible embedded postings are supported. The side panel is available on normal HTTP/HTTPS sites, including custom company career pages.
+
+**Fill Application** generates a resume first if the current job has no generated resume. Generation failures stop the fill attempt. Review the generated resume and its changes in Preview before submitting yourself.
+
+For a form-only, restricted, or embedded page whose description cannot be read, expand **Application form only? Paste the full job description** under Generate Documents. Include the title, company, duties, and requirements, then use Generate. The app will not invent a description from a bare title or application questions. Page extraction runs only when you request generation/filling, and job text is sent to your configured AI provider. Form field values are excluded from page capture. Some protected pages and cross-origin frames require opening the full listing directly or using the paste option.
 
 ### Find remote jobs
 

@@ -1,3 +1,5 @@
+import { readActiveJobPage } from '../utils/page-job';
+import type { PageJobSource } from '../../types/page-job';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from './queries';
 import type { Profile, AppConfig } from '../../types';
@@ -11,6 +13,7 @@ interface SaveProfileData {
 }
 
 interface GenerateDocumentsData {
+  pageSource?: PageJobSource;
   url: string;
   type: 'resume' | 'cover-letter' | 'both';
 }
@@ -140,7 +143,8 @@ export function useUpdateConfig() {
 /** Generate documents (resume + cover letter) */
 export function useGenerateDocuments() {
   return useMutation({
-    mutationFn: async ({ url, type }: GenerateDocumentsData): Promise<GeneratedDocumentsResult> => {
+    mutationFn: async ({ url, type, pageSource }: GenerateDocumentsData): Promise<GeneratedDocumentsResult> => {
+      const source = pageSource ?? await readActiveJobPage(url);
       const data = await apiFetchJson<{
         success: boolean;
         resumePath?: string;
@@ -152,7 +156,7 @@ export function useGenerateDocuments() {
       }>('/documents/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, type }),
+        body: JSON.stringify({ url, type, pageSource: source }),
       });
 
       if (!data.success) throw new Error(data.error || 'Failed to generate documents');

@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { PageJobSourceSchema } from '../../types/page-job';
 import type { FastifyInstance } from 'fastify';
 import { join, resolve, basename } from 'path';
 import { tmpdir } from 'os';
@@ -60,11 +62,13 @@ function safeDocPath(filename: string): string | null {
 
 export function registerDocumentRoutes(app: FastifyInstance): void {
   app.post('/documents/generate', async (request, reply) => {
-    const { url, type } = request.body as { url: string; type: 'resume' | 'cover-letter' | 'both' };
-
-    if (!url) {
-      return reply.status(400).send({ error: 'URL is required' });
-    }
+    const parsed = z.object({
+      url: z.string().url().refine((url) => /^https?:\/\//.test(url)),
+      type: z.enum(['resume', 'cover-letter', 'both']).default('both'),
+      pageSource: PageJobSourceSchema.optional(),
+    }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Provide a valid job URL and a complete job description (at least 100 characters).' });
+    const { url, type, pageSource } = parsed.data;
 
     const ip = request.ip || 'unknown';
     if (!checkDocGenRateLimit(ip)) {
@@ -89,7 +93,8 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       const result = await applicationOrchestrator.generateDocuments(
         url,
         TEMP_DOC_DIR,
-        type ?? 'both'
+        type,
+        pageSource
       );
       return reply.send({
         success: true,
