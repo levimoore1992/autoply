@@ -1,3 +1,4 @@
+import { prepareResumeAttachment } from './utils/resume-attachment';
 import { JobSearchSection } from './components/JobSearchSection';
 import React, { useMemo, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -430,7 +431,7 @@ const AppContent = () => {
     tabUrl?: string
   ) => {
     try {
-      return await chrome.tabs.sendMessage(tabId, message);
+      return await chrome.tabs.sendMessage(tabId, message, { frameId: 0 });
     } catch (err) {
       const error = err as Record<string, unknown>;
       if (
@@ -449,8 +450,8 @@ const AppContent = () => {
             files: ['content.js'],
           });
 
-          await chrome.tabs.sendMessage(tabId, { type: 'PING' });
-          return await chrome.tabs.sendMessage(tabId, message);
+          await chrome.tabs.sendMessage(tabId, { type: 'PING' }, { frameId: 0 });
+          return await chrome.tabs.sendMessage(tabId, message, { frameId: 0 });
         } catch (injectionError) {
           const error = injectionError as Record<string, unknown>;
           const msg = typeof error.message === 'string' ? error.message : 'Unknown injection error';
@@ -504,26 +505,12 @@ const AppContent = () => {
       if (!current.url || documentJobKey(current.url) !== documentJobKey(tab.url)) {
         throw new Error('The job changed during generation. Select the correct job tab before filling.');
       }
-      const resumePromise: Promise<{ base64: string; filename: string } | null> =
-        generatedDocs?.resume
-          ? downloadDocumentMutation
-              .mutateAsync(generatedDocs.resume)
-              .then(
-                (blob) =>
-                  new Promise<{ base64: string; filename: string }>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = () =>
-                      resolve({
-                        base64: reader.result as string,
-                        filename: generatedDocs.resume ?? '',
-                      });
-                    reader.readAsDataURL(blob);
-                  })
-              )
-              .catch(() => null)
-          : Promise.resolve(null);
+      const documents = await prepareResumeAttachment(
+        generatedDocs?.resume,
+        (filename) => downloadDocumentMutation.mutateAsync(filename)
+      );
 
-      // Detect form fields (runs in parallel with resume download above)
+      // Detect fields after the resume has downloaded successfully.
       let fillPlan: Record<string, string> = {};
       let savedKeys: string[] = [];
       let formFields: import('../ai/application-answers').DetectedApplicationField[] = [];
@@ -552,18 +539,6 @@ const AppContent = () => {
         // fillPlan is optional
       }
 
-      // Await resume (was already fetching in parallel)
-      let resumeBase64: string | undefined;
-      let resumeFilename: string | undefined;
-      try {
-        const resumeResult = await resumePromise;
-        if (resumeResult) {
-          resumeBase64 = resumeResult.base64;
-          resumeFilename = resumeResult.filename;
-        }
-      } catch {
-        throw new Error('Could not download the generated resume. Retry before filling this application.');
-      }
       const fillTab = await chrome.tabs.get(tab.id);
       if (fillTab.url !== tab.url) throw new Error('The job tab changed. Try again on the correct application.');
 
@@ -573,7 +548,7 @@ const AppContent = () => {
         expectedUrl: tab.url,
         savedKeys,
         fillPlan,
-        documents: resumeBase64 ? { resume: resumeBase64, resumeFilename } : undefined,
+        documents,
         profile: buildProfilePayload(profile),
       };
 

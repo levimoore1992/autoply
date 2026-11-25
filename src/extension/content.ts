@@ -504,6 +504,15 @@ async function fillCheckbox(el: Element, value: string): Promise<boolean> {
   }
 }
 
+/** ATS controls may replace the file input with a filename and Remove button after selection. */
+function hasSelectedResume(filename: string): boolean {
+  return Array.from(document.querySelectorAll<HTMLElement>('.file-upload, [role="group"], [data-field-path], [data-testid*="resume"]')).some((group) => {
+    const label = group.getAttribute('aria-labelledby')?.split(/\s+/).map((id) => document.getElementById(id)?.textContent || '').join(' ') ||
+      group.querySelector('label,legend,[class*="label"]')?.textContent || '';
+    return /resume|curriculum|\bcv\b/i.test(label) && (group.textContent || '').includes(filename);
+  });
+}
+
 async function uploadResumeFile(base64: string, filename: string): Promise<boolean> {
   const fileInputs = Array.from(
     document.querySelectorAll('input[type="file"]')
@@ -562,10 +571,13 @@ async function uploadResumeFile(base64: string, filename: string): Promise<boole
         const dataTransfer = new DataTransfer();
         dataTransfer.items.add(file);
         input.files = dataTransfer.files;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
-        input.dispatchEvent(new InputEvent('input', { bubbles: true }));
-        console.log(`Autoply: Resume uploaded to input[name="${input.name || input.id}"]`);
-        return true;
+        // Let React/ATS state settle before claiming a successful attachment.
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        if (hasSelectedResume(filename) || (input.isConnected && input.files?.[0]?.name === filename)) {
+          return true;
+        }
       } catch {
         // try next input
       }
