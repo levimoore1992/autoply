@@ -27,3 +27,41 @@ describe('resume attachment selection', () => {
     );
   });
 });
+
+import { coverLetterInputPriority } from './resume-input';
+
+describe('cover-letter attachment selection', () => {
+  test('targets cover-letter fields without putting the letter in a resume or generic PDF field', () => {
+    const field = { name: '', id: '', label: '', context: '', accept: '.pdf,.docx' };
+    expect(coverLetterInputPriority({ ...field, label: 'Cover Letter' })).toBeGreaterThan(0);
+    expect(coverLetterInputPriority({ ...field, id: 'cover_letter' })).toBeGreaterThan(0);
+    expect(
+      coverLetterInputPriority({
+        ...field,
+        name: '_systemfield_resume',
+        label: 'Resume *',
+        context: 'Cover Letter Resume',
+      })
+    ).toBe(-1);
+    expect(coverLetterInputPriority(field)).toBe(-1);
+    expect(resumeInputPriority({ ...field, label: 'Cover Letter' })).toBe(-1);
+  });
+});
+
+import { selectedUploadFilename } from './resume-input';
+
+describe('remote upload retention', () => {
+  test('recognizes an uploaded cover letter after the ATS clears native file selection', () => {
+    expect(
+      selectedUploadFilename('', true, [
+        'Cover Letter',
+        'Levis_Letter_to_NerdWallet.pdf',
+        'Replace',
+      ])
+    ).toBe('Levis_Letter_to_NerdWallet.pdf');
+    expect(selectedUploadFilename('', false, ['Accepted file types: .pdf'])).toBe('');
+    expect(selectedUploadFilename('Existing_resume.pdf', true, ['Other.pdf'])).toBe(
+      'Existing_resume.pdf'
+    );
+  });
+});

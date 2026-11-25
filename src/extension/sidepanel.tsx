@@ -1,4 +1,6 @@
-import { prepareResumeAttachment } from './utils/resume-attachment';
+import { planDocumentAttachments } from './utils/document-plan';
+import type { DocumentAttachments } from '../types/document-attachments';
+import { prepareResumeAttachment, prepareCoverLetterAttachment } from './utils/resume-attachment';
 import { JobSearchSection } from './components/JobSearchSection';
 import React, { useMemo, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -487,56 +489,29 @@ const AppContent = () => {
         throw new Error(unsupportedTabMessage);
       }
 
-      // Kick off resume download in parallel with form field detection
-      const latestDocs = generateDocsMutation.data;
-      let generatedDocs =
-        latestDocs && tab.url && documentJobKey(latestDocs.jobUrl) === documentJobKey(tab.url)
-          ? latestDocs
-          : null;
-      if (latestDocs?.resume && !generatedDocs)
-        toast.warning(
-          'The generated resume belongs to a different job. Generate a resume for this job before attaching it.'
-        );
-      if (!generatedDocs?.resume) {
-        toast.warning('Reading this job description and generating its resume before filling…');
-        generatedDocs = await generateDocsMutation.mutateAsync({ url: tab.url, type: 'resume' });
-      }
-      const current = await chrome.tabs.get(tab.id);
-      if (!current.url || documentJobKey(current.url) !== documentJobKey(tab.url)) {
-        throw new Error('The job changed during generation. Select the correct job tab before filling.');
-      }
-      const documents = await prepareResumeAttachment(
-        generatedDocs?.resume,
-        (filename) => downloadDocumentMutation.mutateAsync(filename)
-      );
-
-      // Detect fields after the resume has downloaded successfully.
+      // Detect document fields before choosing which documents need generation.
       let fillPlan: Record<string, string> = {};
       let savedKeys: string[] = [];
-      let formFields: import('../ai/application-answers').DetectedApplicationField[] = [];
-      try {
-        const detectedFields = await sendMessageToTab(tab.id, { type: 'GET_FORM_FIELDS' }, tab.url);
-        if (detectedFields?.fields?.length > 0) {
-          formFields = detectedFields.fields;
-          // Build fillPlan locally — no server round-trip needed for standard fields
-          fillPlan = buildFillPlanLocally(detectedFields.fields, profile);
-
-          // Saved responses take precedence over automatic mapping for unanswered fields.
-          if (formFields.length > 0) {
-            try {
-              const result = await mapFieldsMutation.mutateAsync({
-                fields: formFields,
-                url: tab.url,
-              });
-              Object.assign(fillPlan, result.fillPlan || {});
-              savedKeys = result.savedKeys || [];
-            } catch {
-              // server mapping is best-effort
-            }
-          }
-        }
-      } catch {
-        // fillPlan is optional
+      const detectedFields = await sendMessageToTab(tab.id, { type: 'GET_FORM_FIELDS' }, tab.url);
+      const formFields: import('../ai/application-answers').DetectedApplicationField[] = detectedFields?.fields || [];
+      const latestDocs = generateDocsMutation.data;
+      let generatedDocs = latestDocs && documentJobKey(latestDocs.jobUrl) === documentJobKey(tab.url) ? latestDocs : null;
+      const plan = planDocumentAttachments(formFields, generatedDocs);
+      if (plan.generate) {
+        toast.warning(`Generating ${plan.generate === 'both' ? 'resume and cover letter' : plan.generate === 'resume' ? 'resume' : 'cover letter'} for this job before filling…`);
+        const generated = await generateDocsMutation.mutateAsync({ url: tab.url, type: plan.generate });
+        generatedDocs = { ...generatedDocs, ...generated };
+      }
+      const documents: DocumentAttachments = {};
+      if (plan.resume) Object.assign(documents, await prepareResumeAttachment(generatedDocs?.resume, (filename) => downloadDocumentMutation.mutateAsync(filename)));
+      if (plan.coverLetter) Object.assign(documents, await prepareCoverLetterAttachment(generatedDocs?.coverLetter, (filename) => downloadDocumentMutation.mutateAsync(filename)));
+      if (formFields.length) {
+        fillPlan = buildFillPlanLocally(formFields, profile);
+        try {
+          const result = await mapFieldsMutation.mutateAsync({ fields: formFields, url: tab.url });
+          Object.assign(fillPlan, result.fillPlan || {});
+          savedKeys = result.savedKeys || [];
+        } catch { /* Server mapping is best-effort. Document downloads above must succeed. */ }
       }
 
       const fillTab = await chrome.tabs.get(tab.id);

@@ -26,3 +26,26 @@ describe('resume delivery to the form', () => {
     );
   });
 });
+
+import { prepareCoverLetterAttachment } from './resume-attachment';
+
+describe('cover-letter PDF delivery', () => {
+  test('keeps the cover-letter payload and filename separate from the resume', async () => {
+    const result = await prepareCoverLetterAttachment(
+      'Levi_Letter_to_NerdWallet.pdf',
+      async () => new Blob(['%PDF-1.7 Cover letter'])
+    );
+    expect(result.coverLetterFilename).toBe('Levi_Letter_to_NerdWallet.pdf');
+    expect(Buffer.from(result.coverLetter.split(',')[1], 'base64').toString()).toBe(
+      '%PDF-1.7 Cover letter'
+    );
+    expect('resume' in result).toBe(false);
+  });
+  test('reports a cover-letter download failure before filling starts', async () => {
+    await expect(
+      prepareCoverLetterAttachment('cover.pdf', async () => {
+        throw new Error('404');
+      })
+    ).rejects.toThrow('cover letter');
+  });
+});

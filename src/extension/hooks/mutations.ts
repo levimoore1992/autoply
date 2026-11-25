@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+import { documentJobKey } from '../utils/job-tabs';
 import { readActiveJobPage } from '../utils/page-job';
 import type { PageJobSource } from '../../types/page-job';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -142,6 +144,7 @@ export function useUpdateConfig() {
 
 /** Generate documents (resume + cover letter) */
 export function useGenerateDocuments() {
+  const lastGenerated = useRef<GeneratedDocumentsResult | null>(null);
   return useMutation({
     mutationFn: async ({ url, type, pageSource }: GenerateDocumentsData): Promise<GeneratedDocumentsResult> => {
       const source = pageSource ?? await readActiveJobPage(url);
@@ -161,14 +164,17 @@ export function useGenerateDocuments() {
 
       if (!data.success) throw new Error(data.error || 'Failed to generate documents');
 
-      return {
+      const previous = lastGenerated.current && documentJobKey(lastGenerated.current.jobUrl) === documentJobKey(url) ? lastGenerated.current : null;
+      const generated = {
         jobUrl: url,
-        resume: data.resumePath?.split('/').pop(),
-        coverLetter: data.coverLetterPath?.split('/').pop(),
-        resumeContent: data.resumeContent,
-        sourceResume: data.sourceResume,
-        coverLetterContent: data.coverLetterContent,
+        resume: data.resumePath?.split('/').pop() ?? previous?.resume,
+        coverLetter: data.coverLetterPath?.split('/').pop() ?? previous?.coverLetter,
+        resumeContent: data.resumeContent ?? previous?.resumeContent,
+        sourceResume: data.sourceResume ?? previous?.sourceResume,
+        coverLetterContent: data.coverLetterContent ?? previous?.coverLetterContent,
       };
+      lastGenerated.current = generated;
+      return generated;
     },
   });
 }

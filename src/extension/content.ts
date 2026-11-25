@@ -1,3 +1,4 @@
+import type { DocumentAttachments } from '../types/document-attachments';
 // Content script for Autoply Copilot
 // Works entirely client-side using Chrome's autocomplete attribute + semantic matching
 // No AI needed for basic form filling - this is how simplify.jobs works
@@ -6,7 +7,7 @@ import {
   normalizeAnswerQuestion,
   checkboxResponse,
 } from '../utils/answer-memory';
-import { resumeInputPriority } from './utils/resume-input';
+import { resumeInputPriority, coverLetterInputPriority, selectedUploadFilename } from './utils/resume-input';
 import { applicationIdentity, isSubmissionConfirmation } from '../utils/submission-confirmation';
 
 // Observe SPA confirmation screens as well as confirmations present at page load.
@@ -505,15 +506,26 @@ async function fillCheckbox(el: Element, value: string): Promise<boolean> {
 }
 
 /** ATS controls may replace the file input with a filename and Remove button after selection. */
-function hasSelectedResume(filename: string): boolean {
-  return Array.from(document.querySelectorAll<HTMLElement>('.file-upload, [role="group"], [data-field-path], [data-testid*="resume"]')).some((group) => {
+function hasSelectedDocument(filename: string, kind: 'resume' | 'cover-letter'): boolean {
+  return Array.from(document.querySelectorAll<HTMLElement>('.file-upload, .ashby-application-form-field, .ashby-application-form-field-entry, [role="group"], [data-field-path], [data-testid*="resume"], [data-testid*="cover"]')).some((group) => {
     const label = group.getAttribute('aria-labelledby')?.split(/\s+/).map((id) => document.getElementById(id)?.textContent || '').join(' ') ||
       group.querySelector('label,legend,[class*="label"]')?.textContent || '';
-    return /resume|curriculum|\bcv\b/i.test(label) && (group.textContent || '').includes(filename);
+    return (kind === 'resume' ? /resume|curriculum|\bcv\b/i : /cover[\s_-]*letter/i).test(label) && (group.textContent || '').includes(filename);
   });
 }
 
-async function uploadResumeFile(base64: string, filename: string): Promise<boolean> {
+/** Preserve already-uploaded files even when the ATS clears the native file input. */
+function currentUploadFilename(input: HTMLInputElement): string {
+  const group = input.closest('.ashby-application-form-field, .ashby-application-form-field-entry, .file-upload, [data-field-path], [data-testid*="field"], [class*="FormField"], fieldset, [role="group"]') || input.parentElement;
+  const removable = Array.from(group?.querySelectorAll('button') || []).some((button) =>
+    /remove|delete|replace/i.test(`${button.textContent || ''} ${button.getAttribute('aria-label') || ''}`)
+  );
+  const labels = Array.from(group?.querySelectorAll('span,p,a,div') || [])
+    .filter((node) => !node.childElementCount).map((node) => node.textContent || '');
+  return selectedUploadFilename(input.files?.[0]?.name || '', removable, labels);
+}
+
+async function uploadDocumentFile(base64: string, filename: string, kind: 'resume' | 'cover-letter'): Promise<boolean> {
   const fileInputs = Array.from(
     document.querySelectorAll('input[type="file"]')
   ) as HTMLInputElement[];
@@ -526,7 +538,7 @@ async function uploadResumeFile(base64: string, filename: string): Promise<boole
         ) || input.parentElement;
       return {
         input,
-        priority: resumeInputPriority({
+        priority: (kind === 'resume' ? resumeInputPriority : coverLetterInputPriority)({
           name: input.name,
           id: input.id,
           label: getFieldLabel(input),
@@ -538,49 +550,26 @@ async function uploadResumeFile(base64: string, filename: string): Promise<boole
     .filter(({ priority }) => priority >= 0)
     .sort((a, b) => b.priority - a.priority);
   for (const { input } of candidates) {
-    const container = input.closest(
-      '.ashby-application-form-field, .ashby-application-form-field-entry, [data-field-path], [data-testid*="field"], [data-testid*="resume"], [class*="resume"], label, fieldset, div'
-    );
-    const context = (
-      input.name +
-      ' ' +
-      input.id +
-      ' ' +
-      (input.getAttribute('aria-label') || '') +
-      ' ' +
-      (container?.textContent || '') +
-      ' ' +
-      (input.getAttribute('accept') || '')
-    ).toLowerCase();
-
-    if (
-      context.includes('resume') ||
-      context.includes('cv') ||
-      context.includes('curriculum') ||
-      context.includes('.pdf') ||
-      context.includes('systemfield_resume')
-    ) {
-      try {
-        const mimeType = 'application/pdf';
-        const byteString = atob(base64.split(',')[1] || base64);
-        const ab = new ArrayBuffer(byteString.length);
-        const ia = new Uint8Array(ab);
-        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-        const blob = new Blob([ab], { type: mimeType });
-        const file = new File([blob], filename, { type: mimeType });
-        const dataTransfer = new DataTransfer();
-        dataTransfer.items.add(file);
-        input.files = dataTransfer.files;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        // Let React/ATS state settle before claiming a successful attachment.
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        if (hasSelectedResume(filename) || (input.isConnected && input.files?.[0]?.name === filename)) {
-          return true;
-        }
-      } catch {
-        // try next input
+    try {
+      const mimeType = 'application/pdf';
+      const byteString = atob(base64.split(',')[1] || base64);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+      const blob = new Blob([ab], { type: mimeType });
+      const file = new File([blob], filename, { type: mimeType });
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      input.files = dataTransfer.files;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      // Let React/ATS state settle before claiming a successful attachment.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (hasSelectedDocument(filename, kind) || (input.isConnected && input.files?.[0]?.name === filename)) {
+        return true;
       }
+    } catch {
+      // try next input
     }
   }
   return false;
@@ -831,7 +820,7 @@ async function fillByFillPlan(
 
 async function handleAutofillWithProfile(
   profile: Profile,
-  _documents?: { resume?: string; coverLetter?: string; resumeFilename?: string },
+  _documents?: DocumentAttachments,
   fillPlan?: Record<string, string>,
   savedKeys: string[] = []
 ): Promise<{ success: boolean; filled: string[]; errors: string[] }> {
@@ -855,10 +844,16 @@ async function handleAutofillWithProfile(
   // Upload resume PDF if provided
   if (_documents?.resume) {
     const filename = _documents.resumeFilename || 'resume.pdf';
-    const uploaded = await uploadResumeFile(_documents.resume, filename);
+    const uploaded = await uploadDocumentFile(_documents.resume, filename, 'resume');
     if (uploaded) result.filled.push('resume_upload');
     else
       result.errors.push('Resume could not be attached. Review the file field before submitting.');
+  }
+
+  if (_documents?.coverLetter) {
+    const uploaded = await uploadDocumentFile(_documents.coverLetter, _documents.coverLetterFilename || 'cover_letter.pdf', 'cover-letter');
+    if (uploaded) result.filled.push('cover_letter_upload');
+    else result.errors.push('Cover letter could not be attached. Review its file field before submitting.');
   }
 
   debugLog(`Autoply: Filled ${result.filled.length} fields:`, result.filled.join(', '));
@@ -894,7 +889,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     const { profile, documents, fillPlan, savedKeys } = message as {
       profile: Profile;
-      documents?: { resume?: string; coverLetter?: string };
+      documents?: DocumentAttachments;
       fillPlan?: Record<string, string>;
       savedKeys?: string[];
     };
@@ -955,11 +950,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (!isFormElement(input)) continue;
       const el = input as HTMLInputElement;
       const label = getFieldLabel(input);
-      const resumeFile =
+      const documentFile =
         el.type === 'file' &&
-        /resume|curriculum|\bcv\b/i.test(label + ' ' + el.name + ' ' + el.id) &&
+        /resume|curriculum|\bcv\b|cover[\s_-]*letter/i.test(label + ' ' + el.name + ' ' + el.id) &&
         !/autofill/i.test(label);
-      if (!isVisible(input) && !resumeFile) continue;
+      if (!isVisible(input) && !documentFile) continue;
       if (el.type === 'password') continue;
       const key = el.name || el.id || `autoply-field-${fields.length}`;
       el.setAttribute('data-autoply-field-key', key);
@@ -971,7 +966,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         rememberable: canRememberField(el.type, label),
         currentValue:
           el.type === 'file'
-            ? el.files?.[0]?.name || ''
+            ? currentUploadFilename(el)
             : el.type === 'checkbox'
               ? checkboxResponse(el.checked, checkboxAnswers.get(el))
               : el.type === 'radio'

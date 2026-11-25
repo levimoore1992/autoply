@@ -48,7 +48,7 @@ export const GenerateDocumentsCard = ({
         </div>
       </div>
 
-      <p className="text-xs text-(--text-secondary)">Reads the job description from this tab. Fill Application also generates a resume when this job has none. Review the result before submitting.</p>
+      <p className="text-xs text-(--text-secondary)">Reads the job description from this tab. Fill Application generates missing resumes and cover letters when the form has a cover-letter upload. Review the result before submitting.</p>
       <details className="text-xs text-(--text-secondary)">
         <summary className="cursor-pointer">Application form only? Paste the full job description</summary>
         <label className="block mt-2">
