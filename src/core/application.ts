@@ -1,3 +1,6 @@
+import { jobFromPage } from './page-job';
+import type { PageJobSource } from '../types/page-job';
+import { findPublicPosting } from '../db/repositories/job-posting';
 import type { JobData } from '../types';
 import { generateCoverLetter } from '../ai/cover-letter';
 import { tailorResume } from '../ai/resume';
@@ -219,7 +222,8 @@ export class ApplicationOrchestrator {
   async generateDocuments(
     url: string,
     outputDir: string,
-    type: 'resume' | 'cover-letter' | 'both' = 'both'
+    type: 'resume' | 'cover-letter' | 'both' = 'both',
+    pageSource?: PageJobSource
   ): Promise<GeneratedDocumentPaths> {
     const parsedUrl = parseJobUrl(url);
     if (!parsedUrl.isValid) {
@@ -238,18 +242,25 @@ export class ApplicationOrchestrator {
       throw new Error('AI provider is not running or configured');
     }
 
-    const spinner = createSpinner('Scraping job...');
+    const spinner = createSpinner(
+      pageSource ? 'Reading job description from page...' : 'Scraping job...'
+    );
     spinner.start();
 
     let jobData: JobData;
     try {
-      jobData = parsedUrl.platform === 'ashby'
-        ? await loadAshbyPosting(url)
-        : await scrapeJob(url, parsedUrl.platform);
+      jobData = pageSource
+        ? await jobFromPage(provider, url, pageSource)
+        : findPublicPosting(url) ?? (
+          parsedUrl.platform === 'ashby'
+            ? await loadAshbyPosting(url)
+            : await scrapeJob(url, parsedUrl.platform)
+        );
       spinner.succeed(`Scraped: ${jobData.title} at ${jobData.company}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      spinner.fail(`Failed to scrape job from ${parsedUrl.platform}`);
+      spinner.fail(pageSource ? 'Could not read the job description' : `Failed to scrape job from ${parsedUrl.platform}`);
+      if (pageSource) throw new Error(message);
       throw new Error(
         `[${parsedUrl.platform}] Scraping failed for ${url}: ${message}. Check that the URL is accessible in a browser.`
       );

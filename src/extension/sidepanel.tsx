@@ -1,3 +1,7 @@
+import { planDocumentAttachments } from './utils/document-plan';
+import type { DocumentAttachments } from '../types/document-attachments';
+import { prepareResumeAttachment, prepareCoverLetterAttachment } from './utils/resume-attachment';
+import { JobSearchSection } from './components/JobSearchSection';
 import React, { useMemo, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
@@ -292,7 +296,7 @@ const AppContent = () => {
 
   // ── Event handlers ──────────────────────────────────────────────────
 
-  const handleGenerateDocuments = async (type: 'resume' | 'cover-letter' | 'both') => {
+  const handleGenerateDocuments = async (type: 'resume' | 'cover-letter' | 'both', description?: string) => {
     if (!currentTabUrl) {
       toast.error('No active job URL detected');
       return;
@@ -307,6 +311,7 @@ const AppContent = () => {
       const result = await generateDocsMutation.mutateAsync({
         url: currentTabUrl,
         type,
+        pageSource: description ? { url: currentTabUrl, title: 'User supplied job description', text: description } : undefined,
       });
       toast.success('Documents generated successfully');
       return result;
@@ -428,7 +433,7 @@ const AppContent = () => {
     tabUrl?: string
   ) => {
     try {
-      return await chrome.tabs.sendMessage(tabId, message);
+      return await chrome.tabs.sendMessage(tabId, message, { frameId: 0 });
     } catch (err) {
       const error = err as Record<string, unknown>;
       if (
@@ -447,8 +452,8 @@ const AppContent = () => {
             files: ['content.js'],
           });
 
-          await chrome.tabs.sendMessage(tabId, { type: 'PING' });
-          return await chrome.tabs.sendMessage(tabId, message);
+          await chrome.tabs.sendMessage(tabId, { type: 'PING' }, { frameId: 0 });
+          return await chrome.tabs.sendMessage(tabId, message, { frameId: 0 });
         } catch (injectionError) {
           const error = injectionError as Record<string, unknown>;
           const msg = typeof error.message === 'string' ? error.message : 'Unknown injection error';
@@ -460,7 +465,7 @@ const AppContent = () => {
   };
 
   const handleAutofill = async () => {
-    if (isApplying) return;
+    if (isApplying || isGeneratingDocs) return;
     setIsApplying(true);
 
     if (!connected) {
@@ -477,90 +482,48 @@ const AppContent = () => {
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab.id) throw new Error('No active tab found');
+      if (!tab.id || !tab.url) throw new Error('No active job tab found');
 
       const unsupportedTabMessage = getUnsupportedTabMessage(tab.url);
       if (unsupportedTabMessage) {
         throw new Error(unsupportedTabMessage);
       }
 
-      // Kick off resume download in parallel with form field detection
-      const latestDocs = generateDocsMutation.data;
-      const generatedDocs =
-        latestDocs && tab.url && documentJobKey(latestDocs.jobUrl) === documentJobKey(tab.url)
-          ? latestDocs
-          : null;
-      if (latestDocs?.resume && !generatedDocs)
-        toast.warning(
-          'The generated resume belongs to a different job. Generate a resume for this job before attaching it.'
-        );
-      const resumePromise: Promise<{ base64: string; filename: string } | null> =
-        generatedDocs?.resume
-          ? downloadDocumentMutation
-              .mutateAsync(generatedDocs.resume)
-              .then(
-                (blob) =>
-                  new Promise<{ base64: string; filename: string }>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = () =>
-                      resolve({
-                        base64: reader.result as string,
-                        filename: generatedDocs.resume ?? '',
-                      });
-                    reader.readAsDataURL(blob);
-                  })
-              )
-              .catch(() => null)
-          : Promise.resolve(null);
-
-      // Detect form fields (runs in parallel with resume download above)
+      // Detect document fields before choosing which documents need generation.
       let fillPlan: Record<string, string> = {};
       let savedKeys: string[] = [];
-      let formFields: import('../ai/application-answers').DetectedApplicationField[] = [];
-      try {
-        const detectedFields = await sendMessageToTab(tab.id, { type: 'GET_FORM_FIELDS' }, tab.url);
-        if (detectedFields?.fields?.length > 0) {
-          formFields = detectedFields.fields;
-          // Build fillPlan locally — no server round-trip needed for standard fields
-          fillPlan = buildFillPlanLocally(detectedFields.fields, profile);
-
-          // Saved responses take precedence over automatic mapping for unanswered fields.
-          if (formFields.length > 0) {
-            try {
-              const result = await mapFieldsMutation.mutateAsync({
-                fields: formFields,
-                url: tab.url,
-              });
-              Object.assign(fillPlan, result.fillPlan || {});
-              savedKeys = result.savedKeys || [];
-            } catch {
-              // server mapping is best-effort
-            }
-          }
-        }
-      } catch {
-        // fillPlan is optional
+      const detectedFields = await sendMessageToTab(tab.id, { type: 'GET_FORM_FIELDS' }, tab.url);
+      const formFields: import('../ai/application-answers').DetectedApplicationField[] = detectedFields?.fields || [];
+      const latestDocs = generateDocsMutation.data;
+      let generatedDocs = latestDocs && documentJobKey(latestDocs.jobUrl) === documentJobKey(tab.url) ? latestDocs : null;
+      const plan = planDocumentAttachments(formFields, generatedDocs);
+      if (plan.generate) {
+        toast.warning(`Generating ${plan.generate === 'both' ? 'resume and cover letter' : plan.generate === 'resume' ? 'resume' : 'cover letter'} for this job before filling…`);
+        const generated = await generateDocsMutation.mutateAsync({ url: tab.url, type: plan.generate });
+        generatedDocs = { ...generatedDocs, ...generated };
+      }
+      const documents: DocumentAttachments = {};
+      if (plan.resume) Object.assign(documents, await prepareResumeAttachment(generatedDocs?.resume, (filename) => downloadDocumentMutation.mutateAsync(filename)));
+      if (plan.coverLetter) Object.assign(documents, await prepareCoverLetterAttachment(generatedDocs?.coverLetter, (filename) => downloadDocumentMutation.mutateAsync(filename)));
+      if (formFields.length) {
+        fillPlan = buildFillPlanLocally(formFields, profile);
+        try {
+          const result = await mapFieldsMutation.mutateAsync({ fields: formFields, url: tab.url });
+          Object.assign(fillPlan, result.fillPlan || {});
+          savedKeys = result.savedKeys || [];
+        } catch { /* Server mapping is best-effort. Document downloads above must succeed. */ }
       }
 
-      // Await resume (was already fetching in parallel)
-      let resumeBase64: string | undefined;
-      let resumeFilename: string | undefined;
-      try {
-        const resumeResult = await resumePromise;
-        if (resumeResult) {
-          resumeBase64 = resumeResult.base64;
-          resumeFilename = resumeResult.filename;
-        }
-      } catch {
-        // resume upload is optional
-      }
+      const fillTab = await chrome.tabs.get(tab.id);
+      if (fillTab.url !== tab.url) throw new Error('The job tab changed. Try again on the correct application.');
 
       // Send profile to content script
       const profilePayload = {
         type: 'AUTOFILL_WITH_PROFILE',
+        expectedUrl: tab.url,
         savedKeys,
         fillPlan,
-        documents: resumeBase64 ? { resume: resumeBase64, resumeFilename } : undefined,
+        documents,
         profile: buildProfilePayload(profile),
       };
 
@@ -575,7 +538,7 @@ const AppContent = () => {
         for (const frame of frames || []) {
           if (frame.frameId !== 0) {
             try {
-              const frameRes = await chrome.tabs.sendMessage(tab.id, profilePayload, {
+              const frameRes = await chrome.tabs.sendMessage(tab.id, { ...profilePayload, expectedUrl: frame.url }, {
                 frameId: frame.frameId,
               });
               if (frameRes?.filled?.length) {
@@ -729,9 +692,10 @@ const AppContent = () => {
       <main className="flex-1 overflow-y-auto px-4 py-4 pb-24 space-y-4">
         {activeTab === 'dashboard' && (
           <div className="space-y-4">
+            <JobSearchSection />
             <ActionCard
               onApply={handleAutofill}
-              isApplying={isApplying}
+              isApplying={isApplying || isGeneratingDocs}
               connected={connected}
               error={isError ? 'Failed to load extension data' : null}
               onRetry={() => window.location.reload()}
@@ -750,8 +714,8 @@ const AppContent = () => {
             <GenerateDocumentsCard
               currentUrl={currentTabUrl}
               onGenerate={handleGenerateDocuments}
-              isGenerating={isGeneratingDocs}
-              generatedDocs={generateDocsMutation.data ?? null}
+              isGenerating={isGeneratingDocs || isApplying}
+              generatedDocs={generateDocsMutation.data && currentTabUrl && documentJobKey(generateDocsMutation.data.jobUrl) === documentJobKey(currentTabUrl) ? generateDocsMutation.data : null}
               connected={connected}
               onPreview={(type) => {
                 const data = generateDocsMutation.data;

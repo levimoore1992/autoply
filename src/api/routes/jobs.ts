@@ -1,3 +1,4 @@
+import { registerDiscoveryRoutes } from './discovery';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { applicationOrchestrator } from '../../core/application';
@@ -13,6 +14,7 @@ const PassiveProcessSchema = z.object({
 });
 
 export function registerJobRoutes(app: FastifyInstance): void {
+  registerDiscoveryRoutes(app);
   app.post('/jobs/passive-process', async (request, reply) => {
     const parsed = PassiveProcessSchema.safeParse(request.body);
     if (!parsed.success) {

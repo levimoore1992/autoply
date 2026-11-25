@@ -13,6 +13,7 @@ const submissionSync = createSubmissionSync(chrome.storage.local, async (entry) 
 });
 chrome.runtime.onStartup.addListener(() => {
   void submissionSync.flush();
+  void syncSidePanelTabs();
 });
 
 /** Catch confirmations already open when the extension is installed/reloaded. */
@@ -76,6 +77,7 @@ async function captureOpenConfirmations(): Promise<void> {
 }
 chrome.runtime.onInstalled.addListener(() => {
   void captureOpenConfirmations();
+  void syncSidePanelTabs();
 });
 
 if (chrome.sidePanel?.setPanelBehavior) {
@@ -84,38 +86,10 @@ if (chrome.sidePanel?.setPanelBehavior) {
     .catch((error) => console.error('Error setting panel behavior:', error));
 }
 
-const JOB_BOARD_URLS = [
-  // Supported ATS platforms (scrape-verified)
-  'greenhouse.io',
-  'lever.co',
-  'ashbyhq.com',
-  // Additional ATS platforms
-  'icims.com',
-  'breezy.hr',
-  'recruitee.com',
-  'jazz.co',
-  'applytojob.com',
-  'rippling.com',
-  'oracle.com/taleo',
-  'successfactors.com',
-  'taleo.net',
-  'kronos.com',
-  'paylocity.com',
-  // Job boards
-  'linkedin.com/jobs',
-  'indeed.com/viewjob',
-  'glassdoor.com/job',
-  'ziprecruiter.com/jobs',
-  'monster.com/job',
-  'dice.com/jobs',
-  'wellfound.com/jobs',
-  'ycombinator.com/jobs',
-];
-
 async function updateSidePanelForTab(tabId: number, url: string): Promise<void> {
   if (!chrome.sidePanel) return;
 
-  const isJobBoard = JOB_BOARD_URLS.some((jobBoardUrl) => url.includes(jobBoardUrl));
+  const isJobBoard = /^https?:\/\//.test(url);
 
   try {
     await chrome.sidePanel.setOptions({
@@ -125,6 +99,13 @@ async function updateSidePanelForTab(tabId: number, url: string): Promise<void> 
     });
   } catch (error) {
     console.error('Error setting side panel options:', error);
+  }
+}
+
+/** Refresh tabs that were already open when the extension was updated. */
+async function syncSidePanelTabs(): Promise<void> {
+  for (const tab of await chrome.tabs.query({})) {
+    if (tab.id && tab.url) await updateSidePanelForTab(tab.id, tab.url);
   }
 }
 

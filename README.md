@@ -177,10 +177,27 @@ Note: Firefox temporary add-ons are removed when you close Firefox. For permanen
 3. Click the Autoply extension icon
 
 4. The extension sidepanel features:
+   - **Find remote jobs**: Search the free Jobicy feed by job title, then select listings to add to your review queue.
    - **Autofill**: Detects form fields on the page, maps your profile data, and fills fields automatically.
    - **AI Chat Assistant**: Ask career questions, get interview prep, or draft responses using context from your profile, resume, GitHub, LinkedIn, and portfolio links.
-   - **Document Generation**: Tailor resumes and cover letters for the current job page.
+   - **Document Generation**: Read the job description from the active tab to tailor resumes and cover letters, including custom career sites. Fill Application generates a resume first when that job has none.
    - **Application Stats**: Track submitted, pending, and filled application history and metrics.
+
+### Generate a resume from any job page
+
+Open the full job listing, then click the Autoply toolbar icon to grant access to that tab. **Generate Documents** reads structured `JobPosting` data or visible job-description text from the page you already opened, so it does not require a separate Playwright browser. Accessible embedded postings are supported. The side panel is available on normal HTTP/HTTPS sites, including custom company career pages.
+
+**Fill Application** generates missing documents before filling. When the form has an empty cover-letter upload, it generates and attaches a cover letter as well as the resume. Already attached documents are preserved. Generation or PDF download failures stop the fill attempt. Review the generated resume and its changes in Preview before submitting yourself.
+
+For a form-only, restricted, or embedded page whose description cannot be read, expand **Application form only? Paste the full job description** under Generate Documents. Include the title, company, duties, and requirements, then use Generate. The app will not invent a description from a bare title or application questions. Page extraction runs only when you request generation/filling, and job text is sent to your configured AI provider. Form field values are excluded from page capture. Some protected pages and cross-origin frames require opening the full listing directly or using the paste option.
+
+### Find remote jobs
+
+On the extension dashboard, enter a title such as `software engineer` or `backend developer`, then click **Find jobs**. The default location filter includes listings marked as US eligible or worldwide. You can also search all remote locations and check each listing's restrictions. All employment types are included, with no salary filter.
+
+Select listings and click **Add selected to review**. Existing tracked listing URLs are excluded, and adding the same listing again does not create a duplicate. Open a listing from the review queue, generate documents for it, then follow its employer application link before using **Fill Application**. Review documents and the completed form before submitting yourself.
+
+Discovery uses the latest 100 listings from the [Jobicy public API](https://github.com/Jobicy/remote-jobs-api), cached locally for one hour. Coverage is limited to that feed; this is not a search of every job site. Keywords match listing titles (including engineer/developer aliases), rather than an AI assessment of your qualifications. The feed receives no resume, API key, or search keywords. A failed refresh can show cached results with a warning. Selected listing descriptions stay in the local database for document generation. Links point to Jobicy listing pages; their employer application links may lead to a different site, so duplicate detection across those different URLs is not guaranteed.
 
 ### Configuration
 

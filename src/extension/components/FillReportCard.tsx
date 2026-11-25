@@ -16,6 +16,7 @@ const FILL_DISPLAY_NAMES: Record<string, string> = {
   portfolio: 'Portfolio',
   location: 'Location',
   resume_upload: 'Resume file',
+  cover_letter_upload: 'Cover letter file',
 };
 
 export const FillReportCard = ({
@@ -41,7 +42,7 @@ export const FillReportCard = ({
     return null;
 
   const startEdit = (key: string, value: string) => {
-    if (key === 'resume_upload') return;
+    if (key === 'resume_upload' || key === 'cover_letter_upload') return;
     setEditingKey(key);
     setEditValue(value);
     setRefillState('idle');
@@ -93,7 +94,7 @@ export const FillReportCard = ({
       <div className="flex flex-wrap gap-2">
         {report.filled.map(({ key, value, label }) => {
           const isEditing = editingKey === key;
-          const isResume = key === 'resume_upload';
+          const isResume = key === 'resume_upload' || key === 'cover_letter_upload';
           return (
             <button
               key={key}
